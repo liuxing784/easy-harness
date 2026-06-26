@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "gatedPaths": {
+    "sourceDirs": ["src"],
+    "buildManifests": ["package.json"],
+    "testConfigs": ["vitest.config.ts"],
+    "rootPatterns": ["Dockerfile*"],
+    "docsAllowedExtensions": [".md", ".mdx", ".txt"]
+  },
+  "gatedShellPatterns": ["\\bnpm\\s+install\\b"],
+  "toolchain": {"approvalTtlMinutes": 60, "installPatterns": ["\\bwinget\\s+install\\b"]},
+  "workflowModes": {"full": "full"},
+  "defaultAgentModels": {"project-manager": "composer-2.5-fast"}
+}
