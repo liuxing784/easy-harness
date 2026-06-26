@@ -1,4 +1,8 @@
 {
-  "description": "test",
-  "extraSourceDirs": []
+  "description": "本项目额外受门禁保护的产物路径与初始化命令（由系统架构师在阶段 2 填写，与 harness.config.json 合并）",
+  "extraSourceDirs": [],
+  "extraBuildManifests": [],
+  "extraTestConfigs": [],
+  "extraRootPatterns": [],
+  "extraShellPatterns": []
 }
