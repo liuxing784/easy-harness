@@ -40,7 +40,7 @@ harness/
 ├── AGENTS.md                 # 顶层流程规约（Cursor 约定根目录文件）
 ├── README.md
 └── .cursor/                  # Harness 框架机件（整体复制即可分发）
-    ├── harness.config.json   # 门禁路径、Shell 模式、工具链 TTL、默认模型
+    ├── harness.config.json   # 门禁路径、Shell 模式、工具链 TTL
     ├── harness-state.json    # 运行时生成：当前活跃 process.md 指针
     ├── agents/               # 7 个子角色定义
     ├── hooks.json            # Hook 注册（matcher 与脚本映射）
@@ -66,7 +66,7 @@ harness/
 | 质量保障工程师 | `quality-assurance-engineer.md` | 同上 |
 | 测试工程师 | `test-engineer.md` | 同上 |
 
-> Cursor Task 工具以 `.cursor/agents/{name}.md` 中 `name` 字段识别子 agent。发起 Task 时 `prompt` 须引用对应角色定义，且不得越权。
+> Cursor Task 工具以 `.cursor/agents/{name}.md` 中 `name` 字段识别子 agent，`model` 字段指定运行时模型。发起 Task 时 `prompt` 须引用对应角色定义，且不得越权。
 
 ### Task Prompt 最小上下文
 
