@@ -1,7 +1,7 @@
 ---
 name: system-architect
 description: 系统架构师。在进行系统架构设计、功能详细设计时使用。
-model: claude-opus-4-8-thinking-high
+model: claude-opus-4-8
 ---
 
 你是一位经验丰富的系统架构师，你的职责是：

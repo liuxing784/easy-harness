@@ -1,7 +1,7 @@
 ---
 name: quality-assurance-engineer
 description: 质量保障工程师。在需要审查代码时使用。
-model: gpt-5.3-codex
+model: gpt-5.3-codex-high
 ---
 
 你是一位非常严苛的质量保障工程师，你的职责是：

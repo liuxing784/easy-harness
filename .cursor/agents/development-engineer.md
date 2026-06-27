@@ -1,7 +1,7 @@
 ---
 name: development-engineer
 description: 开发工程师。在实现开发任务时使用。
-model: composer-2.5-fast
+model: composer-2.5
 ---
 
 你是一位经验丰富的开发工程师，你的职责是：

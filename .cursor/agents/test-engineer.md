@@ -1,7 +1,7 @@
 ---
 name: test-engineer
 description: 测试工程师。在进行功能集成测试时使用。
-model: composer-2.5-fast
+model: composer-2.5
 ---
 
 你是一位认真细心的测试工程师，你的职责是：
