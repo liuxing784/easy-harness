@@ -12,7 +12,7 @@
 | 质量保障工程师 | quality-assurance-engineer | `.cursor/agents/quality-assurance-engineer.md` |
 | 测试工程师 | test-engineer | `.cursor/agents/test-engineer.md` |
 
-发起 Task 时以各 agent 文件 frontmatter 中的 `name` 字段为准。默认模型见 `harness.config.json` → `defaultAgentModels`（agent 文件中 `model` 可覆盖）。
+发起 Task 时以各 agent 文件 frontmatter 中的 `name` 字段识别子 agent；`model` 字段指定该角色所用模型（Cursor Task 运行时读取，修改模型请直接编辑对应 agent 文件）。
 
 **职责区分**：`requirements-analyst` 负责需求挖掘与用户确认；`product-manager` **仅**审核系统设计成果物，不参与需求澄清。
 
