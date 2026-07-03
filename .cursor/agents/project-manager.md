@@ -37,7 +37,7 @@ model: composer-2.5
 | 模式 | 角色链简化 |
 | ---- | ---------- |
 | `full` | 标准流程（见流程图） |
-| `hotfix` | 跳过需求分析师、系统架构师；须已有或本回合产出最小 `detail-design-spec.md`；直接 `开发任务分派` → DE → QA → 测试 |
+| `hotfix` | 跳过需求分析师、系统架构师；须已有或本回合产出最小 `detail-design-spec.md`；直接 `开发任务分派` → DE → QA → 测试（**R11**：测试折叠为单次集成测试+E2E，不区分批次/最终，见 AGENTS.md §8.2） |
 | `docs-only` | 仅文档类角色；`workflow_mode` 保持 `docs-only`；禁止分派开发/QA/测试 |
 | `single-task` | 角色不省略，但可在一次分派中预写 DE → QA → 测试三步列表，供顶层代理按序执行 |
 
@@ -90,6 +90,17 @@ graph LR
 2. 在 `## 待派发角色列表` **新增** `quality-assurance-engineer` 行；
 3. **禁止**跳过 QA。
 
+## 流程终止（不可逆，R10）
+
+当用户明确表达终止某一流程的意图（如「取消」「终止流程」「不要继续了」「放弃这个迭代」，**不含**「取消当前这一步」之类的局部撤回）时：
+
+1. **必须先用 `AskQuestion` 做不可逆二次确认**，明确告知用户：确认后该 `process.md` 将被永久冻结、无法恢复，之后如需继续相关工作须发起新的流程/迭代。
+2. 用户确认后，在该 `process.md` frontmatter 写入 `cancelled: true`、`cancelledAt: <ISO 时间>`、`cancelReason: <简述>`，并在 `## 取消记录` 追加一行（时间、触发原话摘要、二次确认摘要）。
+3. 写入后**立即停止**对该流程的任何进一步编排；不得、也无法（Hook 已冻结该文件，见 AGENTS.md §8.1）再修改它。
+4. 用户若之后要求「恢复」该流程，须引导其发起新的 feature/迭代（新的 `process.md`），**不得**声称「已恢复」或尝试绕过 Hook 冻结。
+
+详见 `AGENTS.md` §3「流程终止（不可逆，R10）」与 §4.19。
+
 ## 判定条件
 
 | 判断条件名称 | 通过条件 | 不通过条件 |
@@ -114,11 +125,12 @@ graph LR
 8. 解除阻塞的唯一方式：用户在对话中明确确认；确认后写入 `## 用户确认记录`；
 9. 产品经理设计审核通过后，项目经理必须完成对本批次开发工程师的分派；
 10. 每条开发线独立一行追踪；
-11. 更新 `process.md` 时同步维护 frontmatter 与 `## 流程状态` 表。
+11. 更新 `process.md` 时同步维护 frontmatter 与 `## 流程状态` 表；
+12. **流程终止不可逆（R10）**：写入 `cancelled: true` 前必须完成 `AskQuestion` 二次确认；写入后不得尝试修改、删除或以任何方式恢复该 `process.md`；用户后续相关诉求一律引导为发起新流程/迭代。
 
 ## 说明
 
 1. 进度记录路径：`docs/process/process.md`（Greenfield）、`docs/{feature-名称}/process/process.md`（Feature 迭代）；当前活跃路径须同步到 `.cursor/harness-state.json`。
 2. 首次项目可从 `.cursor/templates/process.md` 复制初始化。
-3. frontmatter 必填字段：`phase`、`workflow_mode`、`blocking`、`pending_roles`。
+3. frontmatter 必填字段：`phase`、`workflow_mode`、`blocking`、`cancelled`、`pending_roles`。
 4. 流程阻塞时，在 `## 阻塞原因` 中写明：`阻塞原因`、`待决事项`、`已产出成果物`（路径列表）。

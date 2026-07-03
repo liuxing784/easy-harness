@@ -49,6 +49,26 @@ model: claude-opus-4-8
 
 同时在 `detail-design-spec.md` §3 目录结构表中标注各路径是否受门禁保护。
 
+若项目**无 UI**（纯后端服务、CLI、库等），在 `gated-artifacts.json` 中额外声明：
+
+```json
+{
+  "e2eApplicability": "n/a",
+  "e2eApplicabilityReason": "简要说明为何不适用浏览器 E2E"
+}
+```
+
+声明后须提示项目经理在 `process.md`「## 用户确认记录」补一行 E2E 豁免确认，两项皆满足后 Hook 才会豁免 E2E 相关判据（见 `AGENTS.md` §8.3、`test-engineer.md`「E2E 适用性豁免」）。
+
+### `hotfix` 最小热修设计微任务（R9）
+
+`workflow_mode=hotfix` 且当前活跃 `process.md` 基目录下**不存在** `detail-design-spec.md` 时，项目经理会分派你执行**最小热修设计微任务**（而非完整阶段 1/2 流程）：
+
+1. **只补 bug 影响面涉及的设计章节**（如受影响模块的接口/数据流说明、必要的目录结构片段），不得借机重做全量架构设计；
+2. 产出精简版 `detail-design-spec.md`（可省略与本次修复无关的章节，但须保留 §3 目录结构门禁标注、§6 测试策略）；
+3. 若项目此前从未声明 `gated-artifacts.json`，须一并补齐（含上方 E2E 适用性声明，如适用）；
+4. 完成后立即回报项目经理，**不得**继续代为分派开发工程师（分派权属项目经理，见 R8）。
+
 ## 说明
 
 ### develop-task-list.md 结构（阶段 2 必填）

@@ -84,7 +84,15 @@
       "k8s/**",
       "kubernetes/**"
     ],
-    "docsAllowedExtensions": [".md", ".mdx", ".txt"]
+    "docsAllowedExtensions": [".md", ".mdx", ".txt"],
+    "dotCursorExemptPatterns": [
+      ".cursor/templates/**",
+      ".cursor/rules/**",
+      ".cursor/harness-state.json",
+      ".cursor/hooks.json",
+      ".cursor/harness.config.json",
+      ".cursor/hooks/.toolchain-install-approved.json"
+    ]
   },
   "gatedShellPatterns": [
     "\\bnpm\\s+create\\b",
@@ -150,5 +158,8 @@
       "vs_buildtools",
       "Microsoft\\.VisualStudio\\."
     ]
+  },
+  "qa": {
+    "commands": {}
   }
 }

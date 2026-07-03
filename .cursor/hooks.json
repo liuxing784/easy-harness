@@ -5,25 +5,35 @@
       {
         "command": "node .cursor/hooks/gate-dev-workflow.mjs",
         "matcher": "Write|StrReplace|ApplyPatch|Delete|EditNotebook",
-        "failClosed": true
+        "failClosed": true,
+        "timeout": 60
+      },
+      {
+        "command": "node .cursor/hooks/gate-role-sequence.mjs",
+        "matcher": "Task",
+        "failClosed": false,
+        "timeout": 60
       }
     ],
     "beforeShellExecution": [
       {
         "command": "node .cursor/hooks/gate-dev-shell.mjs",
         "matcher": ".*",
-        "failClosed": true
+        "failClosed": true,
+        "timeout": 60
       },
       {
         "command": "node .cursor/hooks/gate-toolchain-install.mjs",
         "matcher": ".*",
-        "failClosed": true
+        "failClosed": true,
+        "timeout": 60
       }
     ],
     "stop": [
       {
         "command": "node .cursor/hooks/gate-stop-workflow.mjs",
-        "loop_limit": 3
+        "loop_limit": 3,
+        "timeout": 60
       }
     ]
   }
