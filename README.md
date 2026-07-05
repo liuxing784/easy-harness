@@ -7,15 +7,16 @@
 | 适配目录 | 说明 | 状态 |
 | -------- | ---- | ---- |
 | `cursor/` | 适配 Cursor 的完整规约（Hook 门禁、7 个子角色、脚本、模板、E2E 门禁） | 可用 |
+| `trae/` | 适配 Trae 的完整规约（Hook 门禁、7 个子角色、脚本、模板、E2E 门禁） | 可用 |
 
 ## 工作区根（重要）
 
 仓库根 `easy-harness/` 只是容器（`.git` 在此），**本身不作为工作区根**。使用某一适配时，二选一：
 
-- 直接把对应适配目录（如 `easy-harness/cursor/`）作为工作区根打开；或
+- 直接把对应适配目录（如 `easy-harness/cursor/`、`easy-harness/trae/`）作为工作区根打开；或
 - 把该适配目录的**全部内容**复制到宿主项目根，再以宿主项目为工作区根。
 
-> **切勿**把外层 `easy-harness/` 当作工作区根——容器层没有具体适配的机件（如 `.cursor/`、`AGENTS.md`），工具会找不到门禁与子角色定义，整套规约将**静默失效**。
+> **切勿**把外层 `easy-harness/` 当作工作区根——容器层没有具体适配的机件（如 `.cursor/`、`.trae/`、`AGENTS.md`），工具会找不到门禁与子角色定义，整套规约将**静默失效**。
 
 ## 未来扩展
 
@@ -29,4 +30,4 @@
 
 ## 使用方法
 
-各适配的快速开始、目录结构、配置与门禁说明见其自带 README，例如 [`cursor/README.md`](cursor/README.md)。
+各适配的快速开始、目录结构、配置与门禁说明见其自带 README，例如 [`cursor/README.md`](cursor/README.md) 或 [`trae/README.md`](trae/README.md)。

@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "node .trae/hooks/gate-dev-workflow.mjs",
+        "matcher": "Write|StrReplace|ApplyPatch|Delete|EditNotebook",
+        "failClosed": true,
+        "timeout": 60
+      },
+      {
+        "command": "node .trae/hooks/gate-role-sequence.mjs",
+        "matcher": "Task",
+        "failClosed": false,
+        "timeout": 60
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "node .trae/hooks/gate-dev-shell.mjs",
+        "matcher": ".*",
+        "failClosed": true,
+        "timeout": 60
+      },
+      {
+        "command": "node .trae/hooks/gate-toolchain-install.mjs",
+        "matcher": ".*",
+        "failClosed": true,
+        "timeout": 60
+      }
+    ],
+    "stop": [
+      {
+        "command": "node .trae/hooks/gate-stop-workflow.mjs",
+        "loop_limit": 3,
+        "timeout": 60
+      }
+    ]
+  }
+}
