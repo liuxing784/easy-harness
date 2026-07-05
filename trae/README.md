@@ -1,8 +1,8 @@
 # Harness Engineering（Trae 适配版）
 
-跨技术栈 AI 编程流程规约。本目录为 **Trae 适配版**（由 Cursor 版本适配而来；`AGENTS.md` §0 记录了适配差异与降级方案）。将本目录作为 Trae 工作区根目录，或将本目录内容整体复制到目标项目后使用（`harness.config.json` 已收纳于 `.trae/` 内）。
+跨技术栈 AI 编程流程规约。本目录为 **Trae 版**。将本目录作为 Trae 工作区根目录，或将本目录内容整体复制到目标项目后使用（`harness.config.json` 已收纳于 `.trae/` 内）。
 
-> **Trae 适配要点**：Trae 无 Cursor 风格 Hook 自动执行，门禁改为顶层代理手动调用 `node .trae/scripts/gate-check.mjs`（见 `.trae/rules/gate-protocol.mdc`，`alwaysApply:true`）；7 个角色为 Trae 原生 Subagent（`.trae/agents/*.md`，frontmatter 含 `name`/`description`/`model`/`tools`，由内置 "Agent" 按 `description` 匹配调用）。详见 `AGENTS.md` §0。
+> **Trae 门禁要点**：门禁由顶层代理手动调用 `node .trae/scripts/gate-check.mjs`（见 `.trae/rules/gate-protocol.mdc`，`alwaysApply:true`）；7 个角色为 Trae 原生 Subagent（`.trae/agents/*.md`，frontmatter 含 `name`/`description`/`model`/`tools`，由内置 "Agent" 按 `description` 匹配调用）。详见 `AGENTS.md` §0。
 
 ## 前置条件
 
@@ -29,9 +29,9 @@
 
 4. **（可选）手动初始化**：仅当你要在无 AI 环境下预先建目录时，可执行 `node .trae/scripts/bootstrap-docs.mjs`；Feature 迭代可执行 `node .trae/scripts/bootstrap-docs.mjs --feature=feature-name`。
 
-5. **轻量模式**（用户显式声明时生效）：`hotfix`（热修复/修bug，测试环节按 R11 折叠为单次）、`docs-only`（只改文档）、`single-task`（单任务/小改动）。触发关键词、简化路径与迭代分诊判定的完整定义、门禁链见 `AGENTS.md` §3/§5（唯一权威源，此处不复述以避免与该文件表述漂移）。轻量模式须在 `process.md` frontmatter 中设置 `workflow_mode`。
+5. **轻量模式**（用户显式声明时生效）：`hotfix`、`docs-only`、`single-task`。完整定义与门禁链见 `AGENTS.md` §3/§5（唯一权威源）。轻量模式须在 `process.md` frontmatter 中设置 `workflow_mode`。
 
-6. **流程终止（不可逆）**：明确表达「取消」「终止流程」等意图时，项目经理会先用 `AskQuestion` 做二次确认；确认后该流程的 `process.md` 被 Hook 永久冻结（`cancelled: true`），任何角色均无法再修改或恢复，需继续须发起新流程。完整定义见 `AGENTS.md` §3「流程终止（不可逆，R10）」。
+6. **流程终止（不可逆）**：见 `AGENTS.md` §3「流程终止（不可逆，R10）」。
 
 ## 目录结构
 
@@ -50,7 +50,7 @@ trae/                         # 适配 Trae 的完整规约根（目录名任意
     ├── rules/
     │   └── gate-protocol.mdc  # Trae 门禁调用协议（alwaysApply:true，强制手动调用 gate-check.mjs）
     ├── hooks.json            # 门禁声明文件（Trae 不自动执行，仅供 gate-check.mjs 与文档参考）
-    ├── hooks/                # 流程门禁 Hook 脚本（含 workflow-gate-lib.mjs 共享判定库；判定逻辑与 Cursor 版一致）
+    ├── hooks/                # 流程门禁 Hook 脚本（含 workflow-gate-lib.mjs 共享判定库）
     ├── scripts/
     │   ├── bootstrap-docs.mjs   # 一键初始化 docs/ 结构（幂等）
     │   ├── gate-check.mjs        # Trae 手动门禁入口（dev-write/dev-shell/toolchain/role/stop 子命令）
@@ -89,19 +89,7 @@ npx vitest run --config .trae/scripts/vitest.config.ts
 
 ## 角色加载与 Agent 映射
 
-7 个角色文件（`.trae/agents/*.md`）的 `name` / `description` / `model` / `tools` frontmatter 与角色推荐模型映射，以 `AGENTS.md` §0.2 / §1 为唯一权威源（本文件不重复维护，避免两处表格漂移不一致）。
-
-**Trae 适配**：Trae 原生支持项目级 Subagent（`.trae/agents/{name}.md`，frontmatter 含 `name` / `description` / `model` / `tools`，详见 <https://docs.trae.cn/ide_subagents>）。内置 "Agent" 按各 Subagent 的 `description` 字段匹配调用，Subagent 拥有独立上下文窗口，中间推理不污染顶层对话（见 `AGENTS.md` §0.1）。发起 Subagent 调用时 `prompt` 仅传递任务上下文（用户目标、`process.md` 路径、已有成果物路径、PM 分派计划等），**不注入角色定义正文**——角色约束已由 `.trae/agents/{name}.md` 文件本身承载，且不得越权。
-
-### Task Prompt 最小上下文
-
-顶层代理发起子角色 Task 时，`prompt` 只传递以下信息，不得替子角色指定内部实现步骤：
-
-- 用户目标与用户已确认摘要；
-- 当前活跃 `process.md` 路径；
-- 已存在成果物路径；
-- 项目经理在 `## 待派发角色列表` 中写明的目标角色、开发线、任务包编号；
-- 质量报告 / 测试报告中的待整改问题（仅整改阶段）。
+7 个角色文件（`.trae/agents/*.md`）的 `name` / `description` / `model` / `tools` frontmatter 与角色推荐模型映射，以 `AGENTS.md` §0.2 / §1 为唯一权威源。Trae 原生支持项目级 Subagent，内置 "Agent" 按各 Subagent 的 `description` 字段匹配调用。详见 `AGENTS.md` §0.1。
 
 ## 技术栈扩展
 
@@ -113,13 +101,4 @@ Feature 迭代时，对应文件位于 `docs/{feature-名称}/design/gated-artif
 
 ## 配置说明
 
-- **门禁路径**：`.trae/harness.config.json` → `gatedPaths`
-- **根目录/基础设施门禁**：`.trae/harness.config.json` → `gatedPaths.rootPatterns`
-- **`.trae/` 内部治理门禁（R6）**：`.trae/scripts|agents|hooks/**` 三目录默认纳入机制门禁；白名单豁免见 `gatedPaths.dotTraeExemptPatterns`（模板/rules/运行时状态/hooks 与 config 注册文件/工具链批准标记）
-- **Shell 拦截**：`gatedShellPatterns` + 项目级 `gated-artifacts.json`；`hooks.json` 采用宽 matcher，具体是否拦截由脚本读取配置判定
-- **工具链安装批准**：`toolchain.installPatterns` 命中后，用户确认并创建 `.trae/hooks/.toolchain-install-approved.json`（默认 60 分钟有效）
-- **QA 命令覆盖**：`.trae/harness.config.json` → `qa.commands`（可选）；未声明时 `qa-run.mjs` 按项目根目录构建清单文件自动探测技术栈并选用默认 test/lint/audit 命令。当自动探测不准确（如 monorepo/workspace）时，在 `qa.commands` 中显式声明本项目的 test/lint/audit 命令予以覆盖
-- **活跃流程路径**：`.trae/harness-state.json` → `activeProcessPath`；可用环境变量 `HARNESS_PROCESS_PATH` 临时覆盖
-- **流程角色识别**：Hook 读取 `process.md` 时同时识别中文角色名和 agent slug（例如 `开发工程师` / `development-engineer`）
-
-修改 Hook 或配置后，请同步更新 `AGENTS.md`「流程门禁 Hook」一节。
+配置项见 `.trae/harness.config.json`。修改 Hook 或配置后，请同步更新 `AGENTS.md`「流程门禁 Hook」一节。

@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 /**
- * gate-check.mjs — Trae 手动门禁调用入口（Trae 降级方案的核心适配层）
+ * gate-check.mjs — Trae 手动门禁调用入口
  *
- * 背景：Trae 无 Cursor/Claude-Code 风格的 Hook 自动执行机制
- * （preToolUse / beforeShellExecution / stop 均不被 Trae 原生触发）。
  * 本脚本作为「手动门禁」入口，供顶层代理在对应操作前显式调用：
  * 内部构造 JSON 载荷并以子进程方式调用 .trae/hooks/ 下对应的 gate 脚本，
  * 透传其 stdout 结果，并以退出码区分放行 / 拒绝 / 须继续推进。
@@ -20,13 +18,6 @@
  *   {permission: "deny", user_message, agent_message}    → 拒绝（须停止并报告用户）
  *   {followup_message: "..."}                            → stop 专用，须继续推进
  * 退出码：0 = 放行 / 可收尾；1 = 拒绝；2 = 须继续推进（followup）
- *
- * 与 Cursor 版本的等价关系：
- *   dev-write   ≡ Cursor preToolUse(gate-dev-workflow)
- *   dev-shell   ≡ Cursor beforeShellExecution(gate-dev-shell)
- *   toolchain   ≡ Cursor beforeShellExecution(gate-toolchain-install)
- *   role        ≡ Cursor preToolUse(gate-role-sequence, matcher=Task)
- *   stop        ≡ Cursor stop(gate-stop-workflow)
  *
  * 注意：gate 脚本 fail-open（见 AGENTS.md §8.4），lib 不可加载或运行期异常时放行。
  * 这是防自锁设计，非门禁放松。
