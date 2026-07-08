@@ -854,6 +854,65 @@ export function checkHotfixDesign(content) {
   return { ok: fs.existsSync(designPath), designPath };
 }
 
+/**
+ * R14：接口测试适用性豁免——无对外接口的项目（纯算法库、纯静态前端、无 HTTP/RPC/CLI
+ * 契约的组件等）可豁免「必须做接口测试」判据，判定与 E2E 适用性豁免同构（§8.3）：
+ * 须同时满足①架构师在活跃 `gated-artifacts.json` 声明 `apiTestApplicability: "n/a"`；
+ * ②`process.md`「## 用户确认记录」含一行接口测试豁免确认。两项皆满足才豁免，避免单方
+ * 面弱化门禁（R12）。
+ */
+function hasApiExemptionConfirmation(content) {
+  const body = extractSection(content, '用户确认记录');
+  if (!body) return false;
+  for (const line of body.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('|')) continue;
+    if (/^\|[\s|:-]+\|?$/.test(t)) continue; // 分隔行
+    if (/接口测试|api/i.test(t) && /豁免|不适用|n\/a|无接口|无对外接口/i.test(t)) return true;
+  }
+  return false;
+}
+
+export function isApiTestExempt(content) {
+  const artifacts = loadGatedArtifacts();
+  if (artifacts.apiTestApplicability !== 'n/a') return false;
+  const md = content ?? readProcessMd();
+  if (!md) return false;
+  return hasApiExemptionConfirmation(md);
+}
+
+/**
+ * R14：批次（开发窗口）集成测试阶段必须做接口测试——测试报告须含非空的
+ * 「## 接口测试报告」章节（至少一条真实表格数据行）。扫描当前活跃 docs 子树
+ * `test/` 目录下所有 `*.md` 测试报告，任一含有效「## 接口测试报告」章节即通过。
+ * 仅约束「开发窗口批次集成测试阶段」，最终整体集成测试与 hotfix 折叠通道不由此判定。
+ * 无对外接口项目按 `isApiTestExempt()` 豁免（见上）。
+ */
+export function checkBatchApiTestReport() {
+  const docsBase = getActiveDocsBase();
+  const testDir = path.join(docsBase, 'test');
+  if (!fs.existsSync(testDir)) return { ok: false, reason: 'missing-test-dir' };
+  let files;
+  try {
+    files = fs.readdirSync(testDir).filter((f) => f.toLowerCase().endsWith('.md'));
+  } catch {
+    return { ok: false, reason: 'test-dir-unreadable' };
+  }
+  if (files.length === 0) return { ok: false, reason: 'no-test-report' };
+  for (const f of files) {
+    let content;
+    try {
+      content = fs.readFileSync(path.join(testDir, f), 'utf8');
+    } catch {
+      continue;
+    }
+    if (sectionHasDataRow(content, '接口测试报告')) {
+      return { ok: true, reason: 'checked' };
+    }
+  }
+  return { ok: false, reason: 'no-api-test-report-section' };
+}
+
 /** R13：需求成果物是否就绪（供发起 system-architect 前机械校验） */
 export function checkRequirementReady() {
   const docsBase = getActiveDocsBase();
@@ -1026,6 +1085,8 @@ export function parseWorkflowState(content) {
       finalTestRowComplete: false,
       batchE2ePassed: false,
       finalE2ePassed: false,
+      apiTestExempt: false,
+      batchApiReportPresent: false,
       batchTestComplete: false,
       finalTestComplete: false,
       finalTestRequired: false,
@@ -1058,9 +1119,17 @@ export function parseWorkflowState(content) {
   const batchE2ePassed = batchResult?.gatePassed === true;
   const finalE2ePassed = finalResult?.gatePassed === true;
 
+  // R14：开发窗口批次集成测试阶段必须做接口测试，测试报告须含「## 接口测试报告」章节；
+  // 无对外接口项目经架构师声明 + 用户确认后豁免（batchApiReportPresent 视为满足）。
+  const apiTestExempt = isApiTestExempt(content);
+  const batchApiReportPresent = apiTestExempt || checkBatchApiTestReport().ok;
+
   // R11：hotfix 折叠批次/最终为单次通道——不要求独立的批次集成测试环节，
-  // 直接以「最终」判据为准（test-engineer 以 --scope=final 语义运行一次）。
-  const batchTestComplete = isHotfix ? true : batchTestRowComplete && batchE2ePassed;
+  // 直接以「最终」判据为准（test-engineer 以 --scope=final 语义运行一次）；R14 接口测试
+  // 报告章节仅约束「开发窗口批次集成测试阶段」，故 hotfix 折叠通道不并入该判据。
+  const batchTestComplete = isHotfix
+    ? true
+    : batchTestRowComplete && batchE2ePassed && batchApiReportPresent;
   const finalTestComplete = isDocsOnly ? true : finalTestRowComplete && finalE2ePassed;
 
   const finalTestRequired = isDocsOnly
@@ -1081,6 +1150,8 @@ export function parseWorkflowState(content) {
     finalTestRowComplete,
     batchE2ePassed,
     finalE2ePassed,
+    apiTestExempt,
+    batchApiReportPresent,
     batchTestComplete,
     finalTestComplete,
     finalTestRequired,
