@@ -33,6 +33,7 @@
 | -------- | -------- | --------- | -------- |
 | 单元测试 | development-engineer | | |
 | 集成测试 | test-engineer | | |
+| 接口测试 | test-engineer | | 开发窗口批次集成测试阶段必测（R14，见 AGENTS.md §8.3）；覆盖各接口/契约 |
 | E2E（若适用） | test-engineer | Playwright Chromium headless | P0 场景，见 AGENTS.md §8.3 |
 
 > 若项目无 UI 或不适用浏览器 E2E，须在 §7 `gated-artifacts.json` 中声明 `e2eApplicability: "n/a"` 并注明理由，等待用户在 `process.md`「用户确认记录」中确认豁免。

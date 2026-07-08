@@ -98,6 +98,17 @@ const DPL_CLEAN =
 const DPL_UNRESOLVED =
   '# 设计问题清单\n\n| 检查维度 | 问题描述 | 严重等级 | 是否存在 | 是否解决 | 关联成果物 |\n| --- | --- | --- | --- | --- | --- |\n| 功能 | 边界未定义 | 高 | 是 | 否 | detail-design-spec.md |\n';
 const GATED_EMPTY = '{}\n';
+// R14：含非空「## 接口测试报告」章节的批次测试报告
+const TEST_REPORT_API = [
+  '# 测试报告',
+  '',
+  '## 接口测试报告',
+  '',
+  '| 接口 | 请求方法 | 关联需求 | 关联任务包 | 是否通过 |',
+  '| ---- | -------- | -------- | ---------- | -------- |',
+  '| /api/todos | POST | R-001 | T0-1 | 是 |',
+  '',
+].join('\n');
 
 function progressSection(rows = []) {
   return [
@@ -125,6 +136,42 @@ function greenfieldReady(progressRows = []) {
     ARTIFACT_REF,
     '',
     CONFIRM_SECTION,
+    '',
+    DISPATCH_SECTION,
+    '',
+    progressSection(progressRows),
+    '',
+    BLOCK_OK,
+    '',
+  ].join('\n');
+}
+
+// R14：含接口测试豁免确认行的用户确认记录 + 无对外接口的 gated-artifacts 声明
+const API_EXEMPT_CONFIRM = [
+  '## 用户确认记录',
+  '',
+  '| 确认项 | 时间 | 用户原话摘要 |',
+  '| ------ | ---- | ------------ |',
+  '| 需求摘要 | 2026-01-01 | 已确认 |',
+  '| 接口测试豁免 | 2026-01-01 | 纯算法库无对外接口，确认豁免接口测试 |',
+].join('\n');
+const API_NA_GATED = '{\n  "apiTestApplicability": "n/a",\n  "apiTestApplicabilityReason": "纯算法库无对外接口"\n}\n';
+
+function greenfieldApiExempt(progressRows = []) {
+  return [
+    '---',
+    'phase: development',
+    'workflow_mode: full',
+    'iterationType: greenfield',
+    'blocking: false',
+    'cancelled: false',
+    '---',
+    '',
+    '# 流程进度记录',
+    '',
+    ARTIFACT_REF,
+    '',
+    API_EXEMPT_CONFIRM,
     '',
     DISPATCH_SECTION,
     '',
@@ -519,6 +566,24 @@ function greenfieldScenarios() {
     hook: 'stop', processPath: relToProject(path.join(stopBatchFail, 'docs/process/process.md')),
   });
 
+  const stopBatchNoApi = writeFixture('gf-stop-batch-noapi', {
+    'docs/process/process.md': greenfieldReady([
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+    ]),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+  });
+  writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
+  clearE2e('final');
+  check('G10b R14：批次 E2E 过但缺接口测试报告章节', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopBatchNoApi, 'docs/process/process.md')),
+  });
+
   const stopFinal = writeFixture('gf-stop-final', {
     'docs/process/process.md': greenfieldReady([
       '| 开发工程师 | T0-1 | 执行完成 | |',
@@ -531,11 +596,57 @@ function greenfieldScenarios() {
     'docs/design/detail-design-spec.md': DESIGN_SPEC,
     'docs/design/develop-task-list.md': TASK_LIST,
     'docs/design/design-problem-list.md': DPL_CLEAN,
+    'docs/test/test-report.md': TEST_REPORT_API,
   });
   writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
   writeE2e('final', { requiredIds: ['R-001'], passed: ['R-001'] });
-  check('G11 最终 E2E 通过后收尾（唯一放行点）', 'allow-stop', {
+  check('G11 最终 E2E 通过 + 批次接口测试报告齐备后收尾（唯一放行点）', 'allow-stop', {
     hook: 'stop', processPath: relToProject(path.join(stopFinal, 'docs/process/process.md')),
+  });
+  clearE2e('batch');
+  clearE2e('final');
+
+  const stopApiNaOnly = writeFixture('gf-stop-apina-only', {
+    'docs/process/process.md': greenfieldReady([
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+    ]),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+    'docs/design/gated-artifacts.json': API_NA_GATED,
+  });
+  writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
+  clearE2e('final');
+  check('G11b R14：仅声明 apiTestApplicability n/a 但无用户确认 → 不豁免', 'followup', {
+    hook: 'stop',
+    processPath: relToProject(path.join(stopApiNaOnly, 'docs/process/process.md')),
+    gatedPath: relToProject(path.join(stopApiNaOnly, 'docs/design/gated-artifacts.json')),
+  });
+
+  const stopApiExempt = writeFixture('gf-stop-apiexempt', {
+    'docs/process/process.md': greenfieldApiExempt([
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+      '| 测试工程师 | 最终整体集成测试 | 执行完成 | |',
+    ]),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+    'docs/design/gated-artifacts.json': API_NA_GATED,
+  });
+  writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
+  writeE2e('final', { requiredIds: ['R-001'], passed: ['R-001'] });
+  check('G11c R14：无接口项目声明豁免 + 用户确认后无接口测试报告也可收尾', 'allow-stop', {
+    hook: 'stop',
+    processPath: relToProject(path.join(stopApiExempt, 'docs/process/process.md')),
+    gatedPath: relToProject(path.join(stopApiExempt, 'docs/design/gated-artifacts.json')),
   });
   clearE2e('batch');
   clearE2e('final');

@@ -4,5 +4,7 @@
   "extraBuildManifests": [],
   "extraTestConfigs": [],
   "extraRootPatterns": [],
-  "extraShellPatterns": []
+  "extraShellPatterns": [],
+  "_e2eApplicability_note": "无 UI 项目声明 e2eApplicability:\"n/a\"（+e2eApplicabilityReason）并经用户确认后豁免 E2E 判据；有 UI 则删除本行与下方声明",
+  "_apiTestApplicability_note": "无对外接口项目声明 apiTestApplicability:\"n/a\"（+apiTestApplicabilityReason）并经用户确认后豁免 R14 接口测试判据；有接口则删除本行与下方声明"
 }

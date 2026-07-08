@@ -100,6 +100,11 @@ async function main() {
             '【流程门禁】本批次测试记录已完成，但批次 E2E 未通过。请由 test-engineer 运行 `node .cursor/scripts/e2e-run.mjs --scope=batch --required-ids=<本批次P0>`；未通过前不得推进下一批次。',
           );
         }
+        if (state.batchTestRowComplete && state.batchE2ePassed && !state.batchApiReportPresent) {
+          exitFollowup(
+            '【流程门禁】（R14）本批次集成测试记录与批次 E2E 均已完成，但测试报告缺少非空的「## 接口测试报告」章节。开发窗口批次集成测试阶段必须做接口测试：请由 test-engineer 补做接口测试并在测试报告补全「## 接口测试报告」章节（须含实际用例数据行）后再推进。若本项目确无对外接口，须由 system-architect 在 gated-artifacts.json 声明 apiTestApplicability:"n/a" 且项目经理在 process.md「## 用户确认记录」补一行接口测试豁免确认，方可豁免本判据。',
+          );
+        }
         if (!state.batchTestComplete) {
           exitFollowup(
             '【流程门禁】本批次 QA 已通过，但测试工程师尚未执行批次集成测试（含批次 E2E）。请先调用 project-manager 分派 test-engineer 做批次集成测试。',

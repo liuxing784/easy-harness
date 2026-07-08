@@ -60,6 +60,17 @@ model: claude-opus-4-8
 
 声明后须提示项目经理在 `process.md`「## 用户确认记录」补一行 E2E 豁免确认，两项皆满足后 Hook 才会豁免 E2E 相关判据（见 `AGENTS.md` §8.3、`test-engineer.md`「E2E 适用性豁免」）。
 
+若项目**无对外接口**（纯算法库、纯静态前端、无 HTTP/RPC/CLI 契约的组件等），同理在 `gated-artifacts.json` 中声明，豁免 R14 开发窗口批次接口测试判据：
+
+```json
+{
+  "apiTestApplicability": "n/a",
+  "apiTestApplicabilityReason": "简要说明为何无对外接口 / 不适用接口测试"
+}
+```
+
+声明后须提示项目经理在 `process.md`「## 用户确认记录」补一行**接口测试豁免确认**（行内须含「接口测试」与「豁免/不适用/无接口」等词，供 Hook 机械识别）。两项皆满足后 `checkBatchApiTestReport` 判据方被豁免（见 `AGENTS.md` §8.3、`test-engineer.md`「接口测试适用性豁免」）。**只声明一项不生效**。
+
 ### `hotfix` 最小热修设计微任务（R9）
 
 `workflow_mode=hotfix` 且当前活跃 `process.md` 基目录下**不存在** `detail-design-spec.md` 时，项目经理会分派你执行**最小热修设计微任务**（而非完整阶段 1/2 流程）：
