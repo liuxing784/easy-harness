@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * 门禁逻辑回归自检：覆盖 R3 / R6 / B1 / R9 / R10 / R11 / R13 最低必测集，
- * 以及 Finding #1（出厂模板阻塞误判）回归。
+ * 门禁逻辑回归自检：覆盖 R3 / R6 / B1 / R9 / R10 / R11 / R13 / R14 / R15 / R16
+ * 最低必测集，以及 Finding #1（出厂模板阻塞误判）回归。
  * 纯 Node，无需额外依赖。通过临时 fixture（写入 test-results/.gate-selftest/ 下的
  * docs 子树 + process.md，借助 HARNESS_PROCESS_PATH 环境变量切换活跃流程指针）
  * 驱动 workflow-gate-lib.mjs 的真实文件系统逻辑；测试完成后清理 fixture。
@@ -20,6 +20,10 @@ import {
   checkRoleDispatchGate,
   hasUnresolvedIssues,
   isProcessBlocked,
+  readLintResult,
+  readStaticScanResult,
+  checkLintClean,
+  checkStaticScanClean,
 } from '../hooks/workflow-gate-lib.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -406,6 +410,60 @@ test('R13: 设计审核通过 + 有效分派计划时允许发起 development-en
     },
   );
   const result = checkRoleDispatchGate('development-engineer');
+  assert.equal(result.ok, true);
+});
+
+console.log('== R15：编程规范 lint 门禁 ==');
+test('R15: 无 lint 机读产物时 readLintResult 返回 null', () => {
+  assert.equal(readLintResult(), null);
+});
+test('R15: 存在 lint 结果文件时 readLintResult 返回解析后的对象', () => {
+  const qaDir = path.join(PROJECT_ROOT, 'test-results/qa');
+  fs.mkdirSync(qaDir, { recursive: true });
+  const lintResultPath = path.join(qaDir, '.lint-result.json');
+  fs.writeFileSync(lintResultPath, JSON.stringify({ gatePassed: true }), 'utf8');
+  const statePath = path.join(FIXTURE_ROOT, 'docs/process/process.md');
+  fs.mkdirSync(path.dirname(statePath), { recursive: true });
+  fs.writeFileSync(statePath, '---\nworkflow_mode: full\n---\n', 'utf8');
+  process.env.HARNESS_PROCESS_PATH = path.relative(PROJECT_ROOT, statePath).replace(/\\/g, '/');
+  try {
+    const result = readLintResult();
+    assert.notEqual(result, null);
+    assert.equal(result.gatePassed, true);
+  } finally {
+    try { fs.unlinkSync(lintResultPath); } catch { /* ignore */ }
+  }
+});
+test('R15: checkLintClean 在无产物时返回 false', () => {
+  const content = '---\nworkflow_mode: full\n---\n';
+  const result = checkLintClean(content);
+  assert.equal(result.ok, false);
+});
+test('R15: checkLintClean 在 docs-only 模式视为通过', () => {
+  const content = '---\nworkflow_mode: docs-only\n---\n';
+  const result = checkLintClean(content);
+  assert.equal(result.ok, true);
+});
+test('R15: parseWorkflowState 含 lintPassed/staticScanPassed 字段', () => {
+  const state = parseWorkflowState('---\nworkflow_mode: full\n---\n');
+  assert.equal('lintPassed' in state, true);
+  assert.equal('staticScanPassed' in state, true);
+  assert.equal('lintExempt' in state, true);
+  assert.equal('staticScanExempt' in state, true);
+});
+
+console.log('== R16：静态代码质量门禁 ==');
+test('R16: 无 static scan 机读产物时 readStaticScanResult 返回 null', () => {
+  assert.equal(readStaticScanResult(), null);
+});
+test('R16: checkStaticScanClean 在无产物时返回 false', () => {
+  const content = '---\nworkflow_mode: full\n---\n';
+  const result = checkStaticScanClean(content);
+  assert.equal(result.ok, false);
+});
+test('R16: checkStaticScanClean 在 docs-only 模式视为通过', () => {
+  const content = '---\nworkflow_mode: docs-only\n---\n';
+  const result = checkStaticScanClean(content);
   assert.equal(result.ok, true);
 });
 

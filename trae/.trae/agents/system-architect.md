@@ -50,16 +50,54 @@ tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
 
 同时在 `detail-design-spec.md` §3 目录结构表中标注各路径是否受门禁保护。
 
-若项目**无 UI**（纯后端服务、CLI、库等），在 `gated-artifacts.json` 中额外声明：
+#### §5 编程规范 lint 命令（R15，自动写入 config + 必填留痕）
+
+阶段 2 产出成果物时，须**同时**完成以下两步：
+
+**步骤 A：写入 `harness.config.json` → `qa.commands.lint`**
+
+按用户已确认技术栈，从下表复制对应默认 lint 命令写入 `harness.config.json`：
 
 ```json
 {
-  "e2eApplicability": "n/a",
-  "e2eApplicabilityReason": "简要说明为何不适用浏览器 E2E"
+  "qa": {
+    "commands": {
+      "lint": "npm run lint"
+    }
+  }
 }
 ```
 
-声明后须提示项目经理在 `process.md`「## 用户确认记录」补一行 E2E 豁免确认，两项皆满足后 Hook 才会豁免 E2E 相关判据（见 `AGENTS.md` §8.3、`test-engineer.md`「E2E 适用性豁免」）。
+各栈默认 lint 命令映射（与 `lint-run-lib.mjs` → `STACK_LINT_COMMANDS` 同口径）：
+
+| 技术栈 | 默认 lint 命令 |
+| ------ | -------------- |
+| Node.js（`package.json`） | `npm run lint` |
+| Python（`pyproject.toml` / `requirements.txt`） | `ruff check .` |
+| Go（`go.mod`） | `go vet ./...` |
+| Rust（`Cargo.toml`） | `cargo clippy` |
+| Ruby（`Gemfile`） | `rubocop` |
+| Java Maven / Java Gradle / PHP / .NET | **无框架默认** → 见下方豁免路径 |
+
+- **有默认命令的栈**：直接写入对应命令。如为 monorepo 或多 manifest 项目，`lint-run.mjs` 的自动探测可能不准确，须以 `qa.commands.lint` 显式覆盖为准。
+- **无框架默认 lint 的栈**（Java/PHP/.NET 等）：优先在 `qa.commands.lint` 写入项目实际可用的等价 lint 命令（如 `mvn checkstyle:check`、`phpcs --standard=PSR12 .`、`dotnet format --verify-no-changes`）；**仅当项目确实无可用 lint 工具时**，走下方 `lintApplicability: "n/a"` 双要素豁免（此时 `qa.commands.lint` 留空）。
+
+**步骤 B：在 `detail-design-spec.md` §5「本项目」表格中留痕**
+
+将步骤 A 写入的命令同步填入 `detail-design-spec.md` §5「本项目」表格（或注明豁免理由），供 QA/PM 查阅。
+
+### 门禁适用性豁免（声明模板）
+
+以下四项豁免（接口测试 / lint / 重复代码 / 安全扫描）遵循同一模式：架构师在 `gated-artifacts.json` 声明对应字段为 `"n/a"`（含原因），并提示项目经理在 `process.md`「## 用户确认记录」补一行豁免确认（行内须含对应关键词）。**两项皆满足方生效，只声明一项不生效**。各豁免的关键字段、关键词与 Hook 函数如下：
+
+| 豁免项 | `gated-artifacts.json` 字段 | 用户确认行关键词 | Hook 函数 |
+| ------ | --------------------------- | ---------------- | --------- |
+| 接口测试（R14） | `apiTestApplicability` / `apiTestApplicabilityReason` | 「接口测试」+「豁免/不适用/无接口」 | `isApiTestExempt()` |
+| 编程规范 lint（R15） | `lintApplicability` / `lintApplicabilityReason` | 「编程规范/代码规范/lint」+「豁免/不适用/无」 | `isLintExempt()` |
+| 重复代码检测（R16） | `dupCheckApplicability` / `dupCheckApplicabilityReason` | 「重复代码/DRY/jscpd」+「豁免/不适用/无」 | `isDupCheckExempt()` |
+| 安全静态扫描（R16） | `securityScanApplicability` / `securityScanApplicabilityReason` | 「安全扫描/安全静态扫描/密钥扫描」+「豁免/不适用/无」 | `isSecurityScanExempt()` |
+
+重复代码与安全扫描须**分别独立**声明，互不代替。E2E 适用性豁免（`e2eApplicability`）同此模式，关键词见 `test-engineer.md`。声明后须提示项目经理补确认行。
 
 ### `hotfix` 最小热修设计微任务（R9）
 
@@ -105,7 +143,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
 1. 用户未指定技术栈时：只执行阶段 1 后**立即停止**；
 2. 收到用户确认后：仅执行阶段 2，基于用户选定栈（不得改选）；
 3. **禁止代用户决策**；
-4. **禁止**产出缺少 §3 或 `gated-artifacts.json` 的阶段 2 成果物；
-5. §3 只描述任务包级分派，**禁止**写入开发工程师内部实现步骤；
-6. 依赖链决定不可并行时，须如实标为 `全串行` 或 `仅串行`；
-7. 若 Task `prompt` 与本文件冲突，**以本文件为准**。
+4. **禁止**产出缺少 §3、§5 lint 命令留痕（或豁免说明）或 `gated-artifacts.json` 的阶段 2 成果物；
+5. **系统架构与模块划分须遵循** `detail-design-spec.md` §2 架构设计原则（单一职责、高内聚低耦合、DRY、KISS、依赖方向）；
+6. §3 只描述任务包级分派，**禁止**写入开发工程师内部实现步骤；
+7. 依赖链决定不可并行时，须如实标为 `全串行` 或 `仅串行`。

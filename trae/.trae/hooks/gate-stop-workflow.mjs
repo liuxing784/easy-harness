@@ -51,8 +51,9 @@ async function main() {
       exitAllow();
     }
 
-    // 放行（全流程测试闭环）：finalTestRequired && finalTestComplete
-    if (state.finalTestRequired && state.finalTestComplete) {
+    // 放行（全流程测试闭环）：finalTestRequired && finalTestComplete && lintPassed（R15）
+    // && staticScanPassed（R16）
+    if (state.finalTestRequired && state.finalTestComplete && state.lintPassed && state.staticScanPassed) {
       exitAllow();
     }
 
@@ -81,6 +82,19 @@ async function main() {
     const isDocsOnly = state.workflowMode === 'docs-only';
 
     if (!isDocsOnly && state.qaComplete) {
+      // R15：编程规范（lint）硬门禁——QA 记录完成后、推进测试/收尾前，lint 必须通过。
+      if (!state.lintPassed) {
+        exitFollowup(
+          '【流程门禁】（R15）QA 记录已完成，但编程规范（lint）门禁未通过。请由 quality-assurance-engineer 运行 `node .trae/scripts/lint-run.mjs` 并将违规整改至 gatePassed=true（机读产物 test-results/qa/.lint-result.json）；确无可用 linter 时须由 system-architect 在 gated-artifacts.json 声明 lintApplicability:"n/a" 且项目经理在 process.md「## 用户确认记录」补一行编程规范豁免确认。lint 未通过前不得推进测试或宣告完成。',
+        );
+      }
+      // R16：静态代码质量硬门禁——QA 记录完成后、推进测试/收尾前，重复代码检测与
+      // 安全静态扫描均须通过。
+      if (!state.staticScanPassed) {
+        exitFollowup(
+          '【流程门禁】（R16）QA 记录已完成，但静态代码质量门禁（重复代码 DRY + 安全静态扫描）未通过。请由 quality-assurance-engineer 运行 `node .trae/scripts/static-scan-run.mjs` 并将问题整改至 gatePassed=true（机读产物 test-results/qa/.static-scan-result.json）；确无法运行时须由 system-architect 在 gated-artifacts.json 分别声明 dupCheckApplicability/securityScanApplicability:"n/a" 且项目经理在 process.md「## 用户确认记录」补对应豁免确认。未通过前不得推进测试或宣告完成。',
+        );
+      }
       if (isHotfix) {
         // R11：hotfix 折叠批次/最终为单次通道，跳过批次相关两条判据，直接要求最终（唯一一次）E2E。
         if (!state.finalTestRowComplete) {

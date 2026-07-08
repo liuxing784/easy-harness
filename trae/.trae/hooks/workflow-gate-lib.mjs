@@ -807,6 +807,28 @@ export function readE2eResult(scope) {
   }
 }
 
+/** R15：读取 QA 阶段编程规范（lint）门禁机读结果（lint-run.mjs 产出），缺失/解析失败返回 null */
+export function readLintResult() {
+  const resultPath = path.join(PROJECT_ROOT, 'test-results/qa', '.lint-result.json');
+  if (!fs.existsSync(resultPath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(resultPath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** R16：读取 QA 阶段静态代码质量门禁机读结果（static-scan-run.mjs 产出），缺失/解析失败返回 null */
+export function readStaticScanResult() {
+  const resultPath = path.join(PROJECT_ROOT, 'test-results/qa', '.static-scan-result.json');
+  if (!fs.existsSync(resultPath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(resultPath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 /**
  * R3：非 hotfix/docs-only 迭代进入开发前须校验四件成果物存在且被 process.md 引用。
  * `iterationType` 缺失时跳过（legacy 兼容）。
@@ -879,6 +901,85 @@ export function isApiTestExempt(content) {
   const md = content ?? readProcessMd();
   if (!md) return false;
   return hasApiExemptionConfirmation(md);
+}
+
+/**
+ * R15：编程规范（lint）适用性豁免——确无可用 linter 的项目（如无成熟 lint 工具的
+ * 技术栈）可豁免「lint 门禁必须通过」判据，判定与 E2E / 接口测试适用性豁免同构：
+ * 须同时满足①架构师在活跃 `gated-artifacts.json` 声明 `lintApplicability: "n/a"`；
+ * ②`process.md`「## 用户确认记录」含一行编程规范/lint 豁免确认。两项皆满足才豁免，
+ * 避免单方面弱化门禁（R12）。
+ */
+function hasLintExemptionConfirmation(content) {
+  const body = extractSection(content, '用户确认记录');
+  if (!body) return false;
+  for (const line of body.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('|')) continue;
+    if (/^\|[\s|:-]+\|?$/.test(t)) continue; // 分隔行
+    if (/编程规范|代码规范|lint/i.test(t) && /豁免|不适用|n\/a|无\s*lint|无可用/i.test(t)) return true;
+  }
+  return false;
+}
+
+export function isLintExempt(content) {
+  const artifacts = loadGatedArtifacts();
+  if (artifacts.lintApplicability !== 'n/a') return false;
+  const md = content ?? readProcessMd();
+  if (!md) return false;
+  return hasLintExemptionConfirmation(md);
+}
+
+/**
+ * R16：重复代码检测（DRY）适用性豁免——判定与 lint 豁免（R15）同构：须同时满足
+ * ①架构师在活跃 `gated-artifacts.json` 声明 `dupCheckApplicability: "n/a"`；
+ * ②`process.md`「## 用户确认记录」含一行重复代码/DRY 豁免确认。两项皆满足才豁免，
+ * 避免单方面弱化门禁（R12）。与安全扫描豁免（isSecurityScanExempt）相互独立。
+ */
+function hasDupExemptionConfirmation(content) {
+  const body = extractSection(content, '用户确认记录');
+  if (!body) return false;
+  for (const line of body.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('|')) continue;
+    if (/^\|[\s|:-]+\|?$/.test(t)) continue; // 分隔行
+    if (/重复代码|dry|jscpd/i.test(t) && /豁免|不适用|n\/a|无/i.test(t)) return true;
+  }
+  return false;
+}
+
+export function isDupCheckExempt(content) {
+  const artifacts = loadGatedArtifacts();
+  if (artifacts.dupCheckApplicability !== 'n/a') return false;
+  const md = content ?? readProcessMd();
+  if (!md) return false;
+  return hasDupExemptionConfirmation(md);
+}
+
+/**
+ * R16：安全静态扫描（密钥泄露）适用性豁免——判定与 lint 豁免（R15）同构：须同时满足
+ * ①架构师在活跃 `gated-artifacts.json` 声明 `securityScanApplicability: "n/a"`；
+ * ②`process.md`「## 用户确认记录」含一行安全扫描豁免确认。两项皆满足才豁免，避免
+ * 单方面弱化门禁（R12）。与重复代码豁免（isDupCheckExempt）相互独立。
+ */
+function hasSecurityExemptionConfirmation(content) {
+  const body = extractSection(content, '用户确认记录');
+  if (!body) return false;
+  for (const line of body.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('|')) continue;
+    if (/^\|[\s|:-]+\|?$/.test(t)) continue; // 分隔行
+    if (/安全扫描|安全静态扫描|密钥扫描|secretscan|gitleaks/i.test(t) && /豁免|不适用|n\/a|无/i.test(t)) return true;
+  }
+  return false;
+}
+
+export function isSecurityScanExempt(content) {
+  const artifacts = loadGatedArtifacts();
+  if (artifacts.securityScanApplicability !== 'n/a') return false;
+  const md = content ?? readProcessMd();
+  if (!md) return false;
+  return hasSecurityExemptionConfirmation(md);
 }
 
 /**
@@ -963,6 +1064,38 @@ export function checkQaClean() {
     if (/质量判定[:：]\s*不通过/.test(content)) return { ok: false, reason: `qa-fail-${f}` };
   }
   return { ok: true, reason: 'checked' };
+}
+
+/**
+ * R15：编程规范（lint）门禁是否通过（供发起 test-engineer 前机械校验，与 checkQaClean 并列）。
+ * docs-only 模式或经双要素适用性豁免时视为通过；否则须存在 lint-run.mjs 机读产物且 gatePassed=true。
+ */
+export function checkLintClean(content) {
+  if (content == null) content = readProcessMd() ?? '';
+  if (getWorkflowMode(content) === 'docs-only') return { ok: true, reason: 'docs-only' };
+  if (isLintExempt(content)) return { ok: true, reason: 'lint-exempt' };
+  const result = readLintResult();
+  if (!result) return { ok: false, reason: 'no-lint-result' };
+  return result.gatePassed === true
+    ? { ok: true, reason: 'checked' }
+    : { ok: false, reason: 'lint-not-passed' };
+}
+
+/**
+ * R16：静态代码质量门禁是否通过（供发起 test-engineer 前机械校验，与 checkLintClean 并列）。
+ * docs-only 模式视为通过；否则须存在 static-scan-run.mjs 机读产物且 gatePassed=true，
+ * 或重复代码/安全扫描分别经双要素豁免后各自视为满足。
+ */
+export function checkStaticScanClean(content) {
+  if (content == null) content = readProcessMd() ?? '';
+  if (getWorkflowMode(content) === 'docs-only') return { ok: true, reason: 'docs-only' };
+  const result = readStaticScanResult();
+  const dupOk = isDupCheckExempt(content) || result?.duplication?.gatePassed === true;
+  const securityOk = isSecurityScanExempt(content) || result?.security?.gatePassed === true;
+  if (dupOk && securityOk) return { ok: true, reason: 'checked' };
+  if (!result) return { ok: false, reason: 'no-static-scan-result' };
+  if (!dupOk) return { ok: false, reason: 'dup-check-not-passed' };
+  return { ok: false, reason: 'security-scan-not-passed' };
 }
 
 /**
@@ -1062,6 +1195,14 @@ export function checkRoleDispatchGate(role) {
       if (!qaClean.ok) {
         return { ok: false, reason: qaClean.reason, message: '质量报告存在未解决高/中严重等级问题或质量判定未通过，不得发起测试工程师。' };
       }
+      const lintClean = checkLintClean();
+      if (!lintClean.ok) {
+        return { ok: false, reason: lintClean.reason, message: 'R15：编程规范（lint）门禁未通过（.lint-result.json 缺失或 gatePassed≠true），QA 阶段须运行 `node .trae/scripts/lint-run.mjs` 并整改至通过；确无可用 linter 时须走「架构师声明 lintApplicability:"n/a" + 用户确认」双要素豁免。不得发起测试工程师。' };
+      }
+      const staticScanClean = checkStaticScanClean();
+      if (!staticScanClean.ok) {
+        return { ok: false, reason: staticScanClean.reason, message: 'R16：静态代码质量门禁未通过（.static-scan-result.json 缺失或重复代码/安全扫描任一 gatePassed≠true），QA 阶段须运行 `node .trae/scripts/static-scan-run.mjs` 并整改至通过；确无法运行时须分别走「架构师声明 dupCheckApplicability/securityScanApplicability:"n/a" + 用户确认」双要素豁免。不得发起测试工程师。' };
+      }
       return { ok: true, reason: 'checked' };
     }
     default:
@@ -1087,6 +1228,10 @@ export function parseWorkflowState(content) {
       finalE2ePassed: false,
       apiTestExempt: false,
       batchApiReportPresent: false,
+      lintExempt: false,
+      lintPassed: false,
+      staticScanExempt: false,
+      staticScanPassed: false,
       batchTestComplete: false,
       finalTestComplete: false,
       finalTestRequired: false,
@@ -1124,6 +1269,27 @@ export function parseWorkflowState(content) {
   const apiTestExempt = isApiTestExempt(content);
   const batchApiReportPresent = apiTestExempt || checkBatchApiTestReport().ok;
 
+  // R15：编程规范（lint）硬门禁——QA 阶段须实际运行 lint 且 gatePassed=true（机读产物
+  // test-results/qa/.lint-result.json）。docs-only 无开发窗口视为满足；确无可用 linter 项目
+  // 经「架构师声明 lintApplicability:"n/a" + 用户确认」双要素豁免后视为满足（防单方面弱化，R12）。
+  const lintExempt = isLintExempt(content);
+  const lintResult = readLintResult();
+  const lintPassed = isDocsOnly ? true : (lintExempt || lintResult?.gatePassed === true);
+
+  // R16：静态代码质量硬门禁（重复代码 DRY + 安全静态扫描）——QA 阶段须实际运行且
+  // 两项子检查均 gatePassed=true（机读产物 test-results/qa/.static-scan-result.json）。
+  // docs-only 无开发窗口视为满足；重复代码/安全扫描可分别经「架构师声明
+  // dupCheckApplicability|securityScanApplicability:"n/a" + 用户确认」双要素豁免后视为满足
+  // （防单方面弱化，R12）。staticScanExempt 仅当两项子检查均处于豁免状态时为 true。
+  const staticScanResult = readStaticScanResult();
+  const dupCheckExempt = isDupCheckExempt(content);
+  const securityScanExempt = isSecurityScanExempt(content);
+  const staticScanExempt = dupCheckExempt && securityScanExempt;
+  const staticScanPassed = isDocsOnly
+    ? true
+    : (dupCheckExempt || staticScanResult?.duplication?.gatePassed === true) &&
+      (securityScanExempt || staticScanResult?.security?.gatePassed === true);
+
   // R11：hotfix 折叠批次/最终为单次通道——不要求独立的批次集成测试环节，
   // 直接以「最终」判据为准（test-engineer 以 --scope=final 语义运行一次）；R14 接口测试
   // 报告章节仅约束「开发窗口批次集成测试阶段」，故 hotfix 折叠通道不并入该判据。
@@ -1152,6 +1318,10 @@ export function parseWorkflowState(content) {
     finalE2ePassed,
     apiTestExempt,
     batchApiReportPresent,
+    lintExempt,
+    lintPassed,
+    staticScanExempt,
+    staticScanPassed,
     batchTestComplete,
     finalTestComplete,
     finalTestRequired,

@@ -13,8 +13,8 @@
  *   - 全程使用**隔离 fixture**（写在 `test-results/.gate-scenarios/` 下，经 HARNESS_PROCESS_PATH /
  *     HARNESS_GATED_ARTIFACTS_PATH 指向），不依赖、不改动宿主项目的 `docs/` 成果物。
  *
- * 覆盖场景矩阵：Greenfield(full) / Feature(full) / Hotfix(R11 折叠) / 对抗健壮性 /
- * Finding #1（出厂模板阻塞误判）端到端回归。
+ * 覆盖场景矩阵：Greenfield(full) / Feature(full) / Hotfix(R11 折叠) / R15 编程规范 lint 门禁 /
+ * R16 静态代码质量门禁（重复代码+安全扫描）/ 对抗健壮性 / Finding #1（出厂模板阻塞误判）端到端回归。
  *
  * 用法：
  *   node .cursor/scripts/gate-scenarios.mjs           # 运行全部场景
@@ -422,6 +422,105 @@ function restoreE2e() {
   }
 }
 
+// R15：编程规范（lint）门禁机读产物（test-results/qa/.lint-result.json）——
+// 与 E2E 产物同为受控运行产物，快照/还原避免污染宿主运行时。
+const LINT_FILE = path.join(PROJECT_ROOT, 'test-results/qa/.lint-result.json');
+let lintSnapshot = null;
+
+function snapshotLint() {
+  lintSnapshot = fs.existsSync(LINT_FILE) ? fs.readFileSync(LINT_FILE, 'utf8') : null;
+}
+
+function restoreLint() {
+  if (lintSnapshot === null) fs.rmSync(LINT_FILE, { force: true });
+  else fs.writeFileSync(LINT_FILE, lintSnapshot, 'utf8');
+}
+
+function writeLintPass() {
+  fs.mkdirSync(path.dirname(LINT_FILE), { recursive: true });
+  const result = {
+    gatePassed: true,
+    reason: 'passed',
+    stack: 'node',
+    command: 'npm run lint',
+    exitCode: 0,
+    executedAt: new Date().toISOString(),
+    _note: 'Synthesized by gate-scenarios.mjs for regression only.',
+  };
+  fs.writeFileSync(LINT_FILE, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+}
+
+function writeLintFail() {
+  fs.mkdirSync(path.dirname(LINT_FILE), { recursive: true });
+  const result = {
+    gatePassed: false,
+    reason: 'lint-failed',
+    stack: 'node',
+    command: 'npm run lint',
+    exitCode: 1,
+    executedAt: new Date().toISOString(),
+    _note: 'Synthesized by gate-scenarios.mjs for regression only.',
+  };
+  fs.writeFileSync(LINT_FILE, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+}
+
+function clearLint() {
+  fs.rmSync(LINT_FILE, { force: true });
+}
+
+// R16：静态代码质量门禁机读产物（test-results/qa/.static-scan-result.json）——
+// 与 lint 产物同为受控运行产物，快照/还原避免污染宿主运行时。
+const STATIC_SCAN_FILE = path.join(PROJECT_ROOT, 'test-results/qa/.static-scan-result.json');
+let staticScanSnapshot = null;
+
+function snapshotStaticScan() {
+  staticScanSnapshot = fs.existsSync(STATIC_SCAN_FILE) ? fs.readFileSync(STATIC_SCAN_FILE, 'utf8') : null;
+}
+
+function restoreStaticScan() {
+  if (staticScanSnapshot === null) fs.rmSync(STATIC_SCAN_FILE, { force: true });
+  else fs.writeFileSync(STATIC_SCAN_FILE, staticScanSnapshot, 'utf8');
+}
+
+function writeStaticScanResult(result) {
+  fs.mkdirSync(path.dirname(STATIC_SCAN_FILE), { recursive: true });
+  fs.writeFileSync(STATIC_SCAN_FILE, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+}
+
+function writeStaticScanPass() {
+  writeStaticScanResult({
+    gatePassed: true,
+    duplication: { gatePassed: true, reason: 'passed', command: 'jscpd-rs .', exitCode: 0 },
+    security: { gatePassed: true, reason: 'passed', command: 'gitleaks-secret-scanner', exitCode: 0 },
+    executedAt: new Date().toISOString(),
+    _note: 'Synthesized by gate-scenarios.mjs for regression only.',
+  });
+}
+
+function writeStaticScanDupFail() {
+  writeStaticScanResult({
+    gatePassed: false,
+    duplication: { gatePassed: false, reason: 'scan-failed', command: 'jscpd-rs .', exitCode: 1 },
+    security: { gatePassed: true, reason: 'passed', command: 'gitleaks-secret-scanner', exitCode: 0 },
+    executedAt: new Date().toISOString(),
+    _note: 'Synthesized by gate-scenarios.mjs for regression only.',
+  });
+}
+
+function writeStaticScanSecurityFail() {
+  writeStaticScanResult({
+    gatePassed: false,
+    duplication: { gatePassed: true, reason: 'passed', command: 'jscpd-rs .', exitCode: 0 },
+    security: { gatePassed: false, reason: 'scan-failed', command: 'gitleaks-secret-scanner', exitCode: 1 },
+    executedAt: new Date().toISOString(),
+    _note: 'Synthesized by gate-scenarios.mjs for regression only.',
+  });
+}
+
+function clearStaticScan() {
+  fs.rmSync(STATIC_SCAN_FILE, { force: true });
+}
+
 function specFor(id, status) {
   return { title: `[${id}] e2e`, tests: [{ projectName: 'chromium', results: [{ status }] }] };
 }
@@ -562,6 +661,8 @@ function greenfieldScenarios() {
   });
   writeE2e('batch', { requiredIds: ['R-001'], failed: ['R-001'] });
   clearE2e('final');
+  writeLintPass();
+  writeStaticScanPass();
   check('G10 批次 E2E 失败就想推进/收尾', 'followup', {
     hook: 'stop', processPath: relToProject(path.join(stopBatchFail, 'docs/process/process.md')),
   });
@@ -580,6 +681,8 @@ function greenfieldScenarios() {
   });
   writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
   clearE2e('final');
+  writeLintPass();
+  writeStaticScanPass();
   check('G10b R14：批次 E2E 过但缺接口测试报告章节', 'followup', {
     hook: 'stop', processPath: relToProject(path.join(stopBatchNoApi, 'docs/process/process.md')),
   });
@@ -600,7 +703,9 @@ function greenfieldScenarios() {
   });
   writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
   writeE2e('final', { requiredIds: ['R-001'], passed: ['R-001'] });
-  check('G11 最终 E2E 通过 + 批次接口测试报告齐备后收尾（唯一放行点）', 'allow-stop', {
+  writeLintPass();
+  writeStaticScanPass();
+  check('G11 最终 E2E 通过 + 批次接口测试报告齐备 + lint 通过 + 静态代码质量门禁通过后收尾（唯一放行点）', 'allow-stop', {
     hook: 'stop', processPath: relToProject(path.join(stopFinal, 'docs/process/process.md')),
   });
   clearE2e('batch');
@@ -621,6 +726,8 @@ function greenfieldScenarios() {
   });
   writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
   clearE2e('final');
+  writeLintPass();
+  writeStaticScanPass();
   check('G11b R14：仅声明 apiTestApplicability n/a 但无用户确认 → 不豁免', 'followup', {
     hook: 'stop',
     processPath: relToProject(path.join(stopApiNaOnly, 'docs/process/process.md')),
@@ -643,6 +750,8 @@ function greenfieldScenarios() {
   });
   writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
   writeE2e('final', { requiredIds: ['R-001'], passed: ['R-001'] });
+  writeLintPass();
+  writeStaticScanPass();
   check('G11c R14：无接口项目声明豁免 + 用户确认后无接口测试报告也可收尾', 'allow-stop', {
     hook: 'stop',
     processPath: relToProject(path.join(stopApiExempt, 'docs/process/process.md')),
@@ -650,6 +759,8 @@ function greenfieldScenarios() {
   });
   clearE2e('batch');
   clearE2e('final');
+  clearLint();
+  clearStaticScan();
 }
 
 function featureScenarios() {
@@ -714,6 +825,8 @@ function hotfixScenarios() {
   });
   clearE2e('batch');
   clearE2e('final');
+  writeLintPass();
+  writeStaticScanPass();
   check('H4 R11：QA 过但未做（唯一一次）集成测试即收尾', 'followup', {
     hook: 'stop', processPath: relToProject(path.join(stopNoTest, 'docs/process/process.md')),
   });
@@ -730,10 +843,186 @@ function hotfixScenarios() {
     'docs/design/detail-design-spec.md': DESIGN_SPEC,
   });
   writeE2e('final', { requiredIds: ['R-001'], passed: ['R-001'] });
+  writeLintPass();
+  writeStaticScanPass();
   check('H5 R11：单次集成测试 + 最终 E2E 通过后收尾', 'allow-stop', {
     hook: 'stop', processPath: relToProject(path.join(stopFinal, 'docs/process/process.md')),
   });
   clearE2e('final');
+  clearLint();
+  clearStaticScan();
+}
+
+const QUALITY_REPORT_CLEAN = [
+  '# 质量报告',
+  '',
+  '## 审查结论',
+  '',
+  '| 检查维度 | 要点 | 是否存在问题 | 严重等级 | 是否解决 | 说明 |',
+  '| -------- | ---- | ------------ | -------- | -------- | ---- |',
+  '| 代码规范 | 符合设计文档 §5 | 否 | 低 | | |',
+  '',
+  '## 审查结论汇总',
+  '',
+  '- 质量判定：通过',
+  '',
+].join('\n');
+
+const QA_DONE_ROWS = [
+  '| 开发工程师 | T0-1 | 执行完成 | |',
+  '| 质量保障工程师 | T0-1 | 执行完成 | |',
+];
+
+function lintGateScenarios() {
+  console.log('== 场景 4：编程规范（lint）硬门禁（R15）==');
+
+  // stop 门禁：QA 记录完成后 lint 未通过则注入 followup
+  const stopBase = {
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+  };
+
+  const stopLintFail = writeFixture('lint-stop-fail', {
+    'docs/process/process.md': greenfieldReady(QA_DONE_ROWS),
+    ...stopBase,
+  });
+  clearE2e('batch');
+  clearE2e('final');
+  writeLintFail();
+  writeStaticScanPass();
+  check('L1 QA 记录完成但 lint 失败即想推进/收尾', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopLintFail, 'docs/process/process.md')),
+  });
+
+  const stopLintMissing = writeFixture('lint-stop-missing', {
+    'docs/process/process.md': greenfieldReady(QA_DONE_ROWS),
+    ...stopBase,
+  });
+  clearE2e('batch');
+  clearE2e('final');
+  clearLint();
+  writeStaticScanPass();
+  check('L2 QA 记录完成但缺 lint 机读产物即想推进/收尾', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopLintMissing, 'docs/process/process.md')),
+  });
+
+  // 角色派发门禁（R13/R15）：lint 未通过时禁止发起 test-engineer
+  const roleBase = {
+    ...stopBase,
+    'docs/quality/quality-report.md': QUALITY_REPORT_CLEAN,
+    'docs/design/gated-artifacts.json': GATED_EMPTY,
+  };
+
+  const roleLintFail = writeFixture('lint-role-fail', {
+    'docs/process/process.md': greenfieldReady(QA_DONE_ROWS),
+    ...roleBase,
+  });
+  const roleFailProc = relToProject(path.join(roleLintFail, 'docs/process/process.md'));
+  const roleFailGated = relToProject(path.join(roleLintFail, 'docs/design/gated-artifacts.json'));
+  writeLintFail();
+  writeStaticScanPass();
+  check('L3 QA 通过但 lint 未过发起 test-engineer', 'deny', {
+    hook: 'role', role: 'test-engineer', processPath: roleFailProc, gatedPath: roleFailGated,
+  });
+
+  const roleLintPass = writeFixture('lint-role-pass', {
+    'docs/process/process.md': greenfieldReady(QA_DONE_ROWS),
+    ...roleBase,
+  });
+  const rolePassProc = relToProject(path.join(roleLintPass, 'docs/process/process.md'));
+  const rolePassGated = relToProject(path.join(roleLintPass, 'docs/design/gated-artifacts.json'));
+  writeLintPass();
+  writeStaticScanPass();
+  check('L4 QA 通过 + lint 通过 + 静态代码质量门禁通过后发起 test-engineer', 'allow', {
+    hook: 'role', role: 'test-engineer', processPath: rolePassProc, gatedPath: rolePassGated,
+  });
+  clearLint();
+  clearStaticScan();
+}
+
+function staticScanGateScenarios() {
+  console.log('== 场景 5：静态代码质量硬门禁（R16：重复代码 + 安全扫描）==');
+
+  // stop 门禁：QA 记录完成后重复代码/安全扫描未通过则注入 followup
+  const stopBase = {
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+  };
+
+  const stopDupFail = writeFixture('static-scan-stop-dupfail', {
+    'docs/process/process.md': greenfieldReady(QA_DONE_ROWS),
+    ...stopBase,
+  });
+  clearE2e('batch');
+  clearE2e('final');
+  writeLintPass();
+  writeStaticScanDupFail();
+  check('S1 QA 记录完成但重复代码检测未通过即想推进/收尾', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopDupFail, 'docs/process/process.md')),
+  });
+
+  const stopSecurityFail = writeFixture('static-scan-stop-securityfail', {
+    'docs/process/process.md': greenfieldReady(QA_DONE_ROWS),
+    ...stopBase,
+  });
+  clearE2e('batch');
+  clearE2e('final');
+  writeLintPass();
+  writeStaticScanSecurityFail();
+  check('S2 QA 记录完成但安全静态扫描未通过即想推进/收尾', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopSecurityFail, 'docs/process/process.md')),
+  });
+
+  const stopMissing = writeFixture('static-scan-stop-missing', {
+    'docs/process/process.md': greenfieldReady(QA_DONE_ROWS),
+    ...stopBase,
+  });
+  clearE2e('batch');
+  clearE2e('final');
+  writeLintPass();
+  clearStaticScan();
+  check('S3 QA 记录完成但缺静态代码质量机读产物即想推进/收尾', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopMissing, 'docs/process/process.md')),
+  });
+
+  // 角色派发门禁（R13/R16）：重复代码/安全扫描未通过时禁止发起 test-engineer
+  const roleBase = {
+    ...stopBase,
+    'docs/quality/quality-report.md': QUALITY_REPORT_CLEAN,
+    'docs/design/gated-artifacts.json': GATED_EMPTY,
+  };
+
+  const roleScanFail = writeFixture('static-scan-role-fail', {
+    'docs/process/process.md': greenfieldReady(QA_DONE_ROWS),
+    ...roleBase,
+  });
+  const roleFailProc = relToProject(path.join(roleScanFail, 'docs/process/process.md'));
+  const roleFailGated = relToProject(path.join(roleScanFail, 'docs/design/gated-artifacts.json'));
+  writeLintPass();
+  writeStaticScanSecurityFail();
+  check('S4 QA 通过 + lint 通过但安全静态扫描未过发起 test-engineer', 'deny', {
+    hook: 'role', role: 'test-engineer', processPath: roleFailProc, gatedPath: roleFailGated,
+  });
+
+  const roleScanPass = writeFixture('static-scan-role-pass', {
+    'docs/process/process.md': greenfieldReady(QA_DONE_ROWS),
+    ...roleBase,
+  });
+  const rolePassProc = relToProject(path.join(roleScanPass, 'docs/process/process.md'));
+  const rolePassGated = relToProject(path.join(roleScanPass, 'docs/design/gated-artifacts.json'));
+  writeLintPass();
+  writeStaticScanPass();
+  check('S5 QA 通过 + lint 通过 + 重复代码/安全扫描均通过后发起 test-engineer', 'allow', {
+    hook: 'role', role: 'test-engineer', processPath: rolePassProc, gatedPath: rolePassGated,
+  });
+  clearLint();
+  clearStaticScan();
 }
 
 function adversarialScenarios() {
@@ -840,14 +1129,20 @@ function finding1Scenario() {
 function main() {
   fs.rmSync(SCEN_ROOT, { recursive: true, force: true });
   snapshotE2e();
+  snapshotLint();
+  snapshotStaticScan();
   try {
     greenfieldScenarios();
     featureScenarios();
     hotfixScenarios();
+    lintGateScenarios();
+    staticScanGateScenarios();
     adversarialScenarios();
     finding1Scenario();
   } finally {
     restoreE2e();
+    restoreLint();
+    restoreStaticScan();
     fs.rmSync(SCEN_ROOT, { recursive: true, force: true });
   }
 

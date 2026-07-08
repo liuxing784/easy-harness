@@ -20,9 +20,23 @@ import {
   checkRoleDispatchGate,
   checkBatchApiTestReport,
   isApiTestExempt,
+  isLintExempt,
+  readLintResult,
+  checkLintClean,
+  isDupCheckExempt,
+  isSecurityScanExempt,
+  readStaticScanResult,
+  checkStaticScanClean,
   hasUnresolvedIssues,
   isProcessBlocked,
 } from '../hooks/workflow-gate-lib.mjs';
+import { resolveLintCommand, computeLintGate } from './lint-run-lib.mjs';
+import {
+  resolveDupCommand,
+  resolveSecurityCommand,
+  computeSubGate,
+  computeStaticScanGate,
+} from './static-scan-run-lib.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
@@ -65,6 +79,49 @@ function cleanup() {
   fs.rmSync(FIXTURE_ROOT, { recursive: true, force: true });
   delete process.env.HARNESS_PROCESS_PATH;
   delete process.env.HARNESS_GATED_ARTIFACTS_PATH;
+}
+
+// R15：lint 机读产物固定落盘于 test-results/qa/.lint-result.json（非 fixture 子树）；
+// 自检期间快照/还原真实文件，避免污染宿主运行时产物。
+const LINT_RESULT_PATH = path.join(PROJECT_ROOT, 'test-results/qa/.lint-result.json');
+let _lintSnapshot;
+function snapshotLintResult() {
+  _lintSnapshot = fs.existsSync(LINT_RESULT_PATH) ? fs.readFileSync(LINT_RESULT_PATH, 'utf8') : null;
+}
+function restoreLintResult() {
+  if (_lintSnapshot === null || _lintSnapshot === undefined) fs.rmSync(LINT_RESULT_PATH, { force: true });
+  else fs.writeFileSync(LINT_RESULT_PATH, _lintSnapshot, 'utf8');
+}
+function writeLintResult(result) {
+  fs.mkdirSync(path.dirname(LINT_RESULT_PATH), { recursive: true });
+  fs.writeFileSync(LINT_RESULT_PATH, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+}
+function clearLintResult() {
+  fs.rmSync(LINT_RESULT_PATH, { force: true });
+}
+
+// R16：静态代码质量机读产物固定落盘于 test-results/qa/.static-scan-result.json（非 fixture 子树）；
+// 自检期间快照/还原真实文件，避免污染宿主运行时产物。
+const STATIC_SCAN_RESULT_PATH = path.join(PROJECT_ROOT, 'test-results/qa/.static-scan-result.json');
+let _staticScanSnapshot;
+function snapshotStaticScanResult() {
+  _staticScanSnapshot = fs.existsSync(STATIC_SCAN_RESULT_PATH)
+    ? fs.readFileSync(STATIC_SCAN_RESULT_PATH, 'utf8')
+    : null;
+}
+function restoreStaticScanResult() {
+  if (_staticScanSnapshot === null || _staticScanSnapshot === undefined) {
+    fs.rmSync(STATIC_SCAN_RESULT_PATH, { force: true });
+  } else {
+    fs.writeFileSync(STATIC_SCAN_RESULT_PATH, _staticScanSnapshot, 'utf8');
+  }
+}
+function writeStaticScanResult(result) {
+  fs.mkdirSync(path.dirname(STATIC_SCAN_RESULT_PATH), { recursive: true });
+  fs.writeFileSync(STATIC_SCAN_RESULT_PATH, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+}
+function clearStaticScanResult() {
+  fs.rmSync(STATIC_SCAN_RESULT_PATH, { force: true });
 }
 
 console.log('== R6：.cursor/ 门禁路径判定 ==');
@@ -481,6 +538,276 @@ test('R14: hotfix 折叠通道不并入接口测试报告判据（batchTestCompl
   );
   assert.equal(parseWorkflowState(content).batchTestComplete, true);
 });
+
+console.log('== R15：编程规范（lint）门禁纯函数判据 ==');
+test('R15: resolveLintCommand 覆盖优先于栈默认值', () => {
+  assert.equal(resolveLintCommand({ stack: 'node', override: 'eslint .' }), 'eslint .');
+  assert.equal(resolveLintCommand({ stack: 'node', override: null }), 'npm run lint');
+  assert.equal(resolveLintCommand({ stack: 'python', override: null }), 'ruff check .');
+});
+test('R15: 无 lint 命令的栈返回 null', () => {
+  assert.equal(resolveLintCommand({ stack: 'java-maven', override: null }), null);
+  assert.equal(resolveLintCommand({ stack: null, override: null }), null);
+});
+test('R15: computeLintGate —— 有命令且退出码 0 才 gatePassed', () => {
+  assert.equal(computeLintGate({ command: 'npm run lint', exitCode: 0 }).gatePassed, true);
+  assert.equal(computeLintGate({ command: 'npm run lint', exitCode: 1 }).gatePassed, false);
+  assert.equal(computeLintGate({ command: null, exitCode: null }).gatePassed, false);
+  assert.equal(computeLintGate({ command: null, exitCode: null }).reason, 'no-lint-command');
+});
+
+console.log('== R15：编程规范（lint）门禁机读判据（含双要素豁免）==');
+const R15_QA_DONE = [
+  '---',
+  'workflow_mode: full',
+  'iterationType: greenfield',
+  '---',
+  '',
+  '## 进度列表',
+  '',
+  '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+  '| ----------- | -------- | ---- | ---- |',
+  '| 开发工程师 | T0-1 | 执行完成 | |',
+  '| 质量保障工程师 | T0-1 | 执行完成 | |',
+  '',
+].join('\n');
+const LINT_PASS = { gatePassed: true, reason: 'passed', stack: 'node', command: 'npm run lint', exitCode: 0 };
+const LINT_FAIL = { gatePassed: false, reason: 'lint-failed', stack: 'node', command: 'npm run lint', exitCode: 1 };
+const LINT_NA_GATED = '{ "lintApplicability": "n/a", "lintApplicabilityReason": "无成熟 linter" }\n';
+const LINT_EXEMPT_CONFIRM_PROCESS = [
+  '---',
+  'workflow_mode: full',
+  'iterationType: greenfield',
+  '---',
+  '',
+  '## 用户确认记录',
+  '',
+  '| 确认项 | 时间 | 用户原话摘要 |',
+  '| ------ | ---- | ------------ |',
+  '| 编程规范豁免 | 2026-01-01 | 该技术栈无可用 linter，确认豁免 lint 门禁 |',
+  '',
+  '## 进度列表',
+  '',
+  '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+  '| ----------- | -------- | ---- | ---- |',
+  '| 开发工程师 | T0-1 | 执行完成 | |',
+  '| 质量保障工程师 | T0-1 | 执行完成 | |',
+  '',
+].join('\n');
+
+snapshotLintResult();
+test('R15: 无 lint 机读产物时 checkLintClean 失败、lintPassed=false', () => {
+  const content = fixtureProcess(R15_QA_DONE);
+  clearLintResult();
+  assert.equal(readLintResult(), null);
+  assert.equal(checkLintClean().ok, false);
+  assert.equal(parseWorkflowState(content).lintPassed, false);
+});
+test('R15: lint gatePassed=true 时 checkLintClean 通过、lintPassed=true', () => {
+  const content = fixtureProcess(R15_QA_DONE);
+  writeLintResult(LINT_PASS);
+  assert.equal(checkLintClean().ok, true);
+  assert.equal(parseWorkflowState(content).lintPassed, true);
+});
+test('R15: lint gatePassed=false（lint 失败）时 checkLintClean 失败、lintPassed=false', () => {
+  const content = fixtureProcess(R15_QA_DONE);
+  writeLintResult(LINT_FAIL);
+  assert.equal(checkLintClean().ok, false);
+  assert.equal(parseWorkflowState(content).lintPassed, false);
+});
+test('R15: 仅架构师声明 n/a 但无用户确认 → 不豁免', () => {
+  const content = fixtureProcess(R15_QA_DONE, { 'docs/design/gated-lint-na.json': LINT_NA_GATED });
+  process.env.HARNESS_GATED_ARTIFACTS_PATH = 'test-results/.gate-selftest/docs/design/gated-lint-na.json';
+  clearLintResult();
+  assert.equal(isLintExempt(content), false);
+  assert.equal(parseWorkflowState(content).lintPassed, false);
+  delete process.env.HARNESS_GATED_ARTIFACTS_PATH;
+});
+test('R15: 仅用户确认但架构师未声明 n/a → 不豁免', () => {
+  const content = fixtureProcess(LINT_EXEMPT_CONFIRM_PROCESS, { 'docs/design/none.json': '{}\n' });
+  process.env.HARNESS_GATED_ARTIFACTS_PATH = 'test-results/.gate-selftest/docs/design/none.json';
+  clearLintResult();
+  assert.equal(isLintExempt(content), false);
+  delete process.env.HARNESS_GATED_ARTIFACTS_PATH;
+});
+test('R15: 架构师声明 n/a + 用户确认 → 豁免，lintPassed 视为满足（即便无 lint 产物）', () => {
+  const content = fixtureProcess(LINT_EXEMPT_CONFIRM_PROCESS, { 'docs/design/gated-lint-na.json': LINT_NA_GATED });
+  process.env.HARNESS_GATED_ARTIFACTS_PATH = 'test-results/.gate-selftest/docs/design/gated-lint-na.json';
+  clearLintResult();
+  assert.equal(isLintExempt(content), true);
+  assert.equal(checkLintClean().ok, true);
+  assert.equal(parseWorkflowState(content).lintPassed, true);
+  delete process.env.HARNESS_GATED_ARTIFACTS_PATH;
+});
+test('R15: docs-only 模式 lintPassed 视为满足', () => {
+  const content = '---\nworkflow_mode: docs-only\n---\n';
+  clearLintResult();
+  assert.equal(parseWorkflowState(content).lintPassed, true);
+});
+restoreLintResult();
+
+console.log('== R16：静态代码质量门禁纯函数判据 ==');
+test('R16: resolveDupCommand/resolveSecurityCommand 覆盖优先于默认值', () => {
+  assert.equal(resolveDupCommand({ override: 'jscpd --threshold 10 .' }), 'jscpd --threshold 10 .');
+  assert.ok(resolveDupCommand({ override: null }).includes('jscpd-rs'));
+  assert.equal(resolveDupCommand({ override: '' }), null);
+  assert.equal(resolveSecurityCommand({ override: 'gitleaks detect' }), 'gitleaks detect');
+  assert.ok(resolveSecurityCommand({ override: null }).includes('gitleaks-secret-scanner'));
+  assert.equal(resolveSecurityCommand({ override: '' }), null);
+});
+test('R16: computeSubGate —— 有命令且退出码 0 才 gatePassed', () => {
+  assert.equal(computeSubGate({ command: 'jscpd .', exitCode: 0 }).gatePassed, true);
+  assert.equal(computeSubGate({ command: 'jscpd .', exitCode: 1 }).gatePassed, false);
+  assert.equal(computeSubGate({ command: null, exitCode: null }).gatePassed, false);
+  assert.equal(computeSubGate({ command: null, exitCode: null }).reason, 'no-command');
+});
+test('R16: computeStaticScanGate —— 两项子检查均通过才 gatePassed', () => {
+  const pass = { gatePassed: true };
+  const fail = { gatePassed: false };
+  assert.equal(computeStaticScanGate({ duplication: pass, security: pass }).gatePassed, true);
+  assert.equal(computeStaticScanGate({ duplication: fail, security: pass }).gatePassed, false);
+  assert.equal(computeStaticScanGate({ duplication: pass, security: fail }).gatePassed, false);
+});
+
+console.log('== R16：静态代码质量门禁机读判据（含双要素豁免，重复代码/安全扫描独立）==');
+const R16_QA_DONE = R15_QA_DONE;
+const STATIC_SCAN_PASS = {
+  gatePassed: true,
+  duplication: { gatePassed: true, reason: 'passed', command: 'jscpd .', exitCode: 0 },
+  security: { gatePassed: true, reason: 'passed', command: 'gitleaks-secret-scanner', exitCode: 0 },
+};
+const STATIC_SCAN_DUP_FAIL = {
+  gatePassed: false,
+  duplication: { gatePassed: false, reason: 'scan-failed', command: 'jscpd .', exitCode: 1 },
+  security: { gatePassed: true, reason: 'passed', command: 'gitleaks-secret-scanner', exitCode: 0 },
+};
+const STATIC_SCAN_SECURITY_FAIL = {
+  gatePassed: false,
+  duplication: { gatePassed: true, reason: 'passed', command: 'jscpd .', exitCode: 0 },
+  security: { gatePassed: false, reason: 'scan-failed', command: 'gitleaks-secret-scanner', exitCode: 1 },
+};
+const DUP_NA_GATED = '{ "dupCheckApplicability": "n/a", "dupCheckApplicabilityReason": "生成代码占比过高" }\n';
+const SECURITY_NA_GATED = '{ "securityScanApplicability": "n/a", "securityScanApplicabilityReason": "离线环境无法拉取工具" }\n';
+const DUP_EXEMPT_CONFIRM_PROCESS = [
+  '---',
+  'workflow_mode: full',
+  'iterationType: greenfield',
+  '---',
+  '',
+  '## 用户确认记录',
+  '',
+  '| 确认项 | 时间 | 用户原话摘要 |',
+  '| ------ | ---- | ------------ |',
+  '| 重复代码豁免 | 2026-01-01 | 生成代码占比过高，确认豁免重复代码检测门禁 |',
+  '',
+  '## 进度列表',
+  '',
+  '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+  '| ----------- | -------- | ---- | ---- |',
+  '| 开发工程师 | T0-1 | 执行完成 | |',
+  '| 质量保障工程师 | T0-1 | 执行完成 | |',
+  '',
+].join('\n');
+const SECURITY_EXEMPT_CONFIRM_PROCESS = [
+  '---',
+  'workflow_mode: full',
+  'iterationType: greenfield',
+  '---',
+  '',
+  '## 用户确认记录',
+  '',
+  '| 确认项 | 时间 | 用户原话摘要 |',
+  '| ------ | ---- | ------------ |',
+  '| 安全扫描豁免 | 2026-01-01 | 离线环境无法拉取工具，确认豁免安全静态扫描门禁 |',
+  '',
+  '## 进度列表',
+  '',
+  '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+  '| ----------- | -------- | ---- | ---- |',
+  '| 开发工程师 | T0-1 | 执行完成 | |',
+  '| 质量保障工程师 | T0-1 | 执行完成 | |',
+  '',
+].join('\n');
+
+snapshotStaticScanResult();
+test('R16: 无静态扫描机读产物时 checkStaticScanClean 失败、staticScanPassed=false', () => {
+  const content = fixtureProcess(R16_QA_DONE);
+  clearStaticScanResult();
+  assert.equal(readStaticScanResult(), null);
+  assert.equal(checkStaticScanClean().ok, false);
+  assert.equal(parseWorkflowState(content).staticScanPassed, false);
+});
+test('R16: 两项子检查均 gatePassed=true 时 checkStaticScanClean 通过、staticScanPassed=true', () => {
+  const content = fixtureProcess(R16_QA_DONE);
+  writeStaticScanResult(STATIC_SCAN_PASS);
+  assert.equal(checkStaticScanClean().ok, true);
+  assert.equal(parseWorkflowState(content).staticScanPassed, true);
+});
+test('R16: 重复代码检测未通过时 checkStaticScanClean 失败、staticScanPassed=false', () => {
+  const content = fixtureProcess(R16_QA_DONE);
+  writeStaticScanResult(STATIC_SCAN_DUP_FAIL);
+  assert.equal(checkStaticScanClean().ok, false);
+  assert.equal(checkStaticScanClean().reason, 'dup-check-not-passed');
+  assert.equal(parseWorkflowState(content).staticScanPassed, false);
+});
+test('R16: 安全扫描未通过时 checkStaticScanClean 失败、staticScanPassed=false', () => {
+  const content = fixtureProcess(R16_QA_DONE);
+  writeStaticScanResult(STATIC_SCAN_SECURITY_FAIL);
+  assert.equal(checkStaticScanClean().ok, false);
+  assert.equal(checkStaticScanClean().reason, 'security-scan-not-passed');
+  assert.equal(parseWorkflowState(content).staticScanPassed, false);
+});
+test('R16: 仅架构师声明 dupCheckApplicability n/a 但无用户确认 → 不豁免', () => {
+  const content = fixtureProcess(R16_QA_DONE, { 'docs/design/gated-dup-na.json': DUP_NA_GATED });
+  process.env.HARNESS_GATED_ARTIFACTS_PATH = 'test-results/.gate-selftest/docs/design/gated-dup-na.json';
+  clearStaticScanResult();
+  assert.equal(isDupCheckExempt(content), false);
+  assert.equal(parseWorkflowState(content).staticScanPassed, false);
+  delete process.env.HARNESS_GATED_ARTIFACTS_PATH;
+});
+test('R16: 架构师声明 dupCheckApplicability n/a + 用户确认 → 仅重复代码豁免，安全扫描仍须通过', () => {
+  const content = fixtureProcess(DUP_EXEMPT_CONFIRM_PROCESS, { 'docs/design/gated-dup-na.json': DUP_NA_GATED });
+  process.env.HARNESS_GATED_ARTIFACTS_PATH = 'test-results/.gate-selftest/docs/design/gated-dup-na.json';
+  clearStaticScanResult();
+  assert.equal(isDupCheckExempt(content), true);
+  assert.equal(isSecurityScanExempt(content), false);
+  // 未运行安全扫描，即便重复代码已豁免，整体仍不通过
+  assert.equal(checkStaticScanClean().ok, false);
+  assert.equal(parseWorkflowState(content).staticScanPassed, false);
+  // 安全扫描单独通过后，两项子判据（豁免 + 实测）皆满足
+  writeStaticScanResult({
+    gatePassed: false,
+    duplication: { gatePassed: false, reason: 'scan-failed', command: 'jscpd .', exitCode: 1 },
+    security: { gatePassed: true, reason: 'passed', command: 'gitleaks-secret-scanner', exitCode: 0 },
+  });
+  assert.equal(checkStaticScanClean().ok, true);
+  assert.equal(parseWorkflowState(content).staticScanPassed, true);
+  delete process.env.HARNESS_GATED_ARTIFACTS_PATH;
+});
+test('R16: 架构师声明 securityScanApplicability n/a + 用户确认 → 仅安全扫描豁免，重复代码仍须通过', () => {
+  const content = fixtureProcess(SECURITY_EXEMPT_CONFIRM_PROCESS, {
+    'docs/design/gated-security-na.json': SECURITY_NA_GATED,
+  });
+  process.env.HARNESS_GATED_ARTIFACTS_PATH = 'test-results/.gate-selftest/docs/design/gated-security-na.json';
+  clearStaticScanResult();
+  assert.equal(isSecurityScanExempt(content), true);
+  assert.equal(isDupCheckExempt(content), false);
+  assert.equal(checkStaticScanClean().ok, false);
+  writeStaticScanResult({
+    gatePassed: false,
+    duplication: { gatePassed: true, reason: 'passed', command: 'jscpd .', exitCode: 0 },
+    security: { gatePassed: false, reason: 'scan-failed', command: 'gitleaks-secret-scanner', exitCode: 1 },
+  });
+  assert.equal(checkStaticScanClean().ok, true);
+  assert.equal(parseWorkflowState(content).staticScanPassed, true);
+  delete process.env.HARNESS_GATED_ARTIFACTS_PATH;
+});
+test('R16: docs-only 模式 staticScanPassed 视为满足', () => {
+  const content = '---\nworkflow_mode: docs-only\n---\n';
+  clearStaticScanResult();
+  assert.equal(parseWorkflowState(content).staticScanPassed, true);
+});
+restoreStaticScanResult();
 
 cleanup();
 

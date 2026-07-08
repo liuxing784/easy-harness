@@ -58,6 +58,10 @@ trae/                         # 适配 Trae 的完整规约根（目录名任意
     │   ├── e2e-run-lib.mjs      # e2e-run.mjs 的纯函数库（P0 解析、gatePassed 判据）
     │   ├── e2e-run-lib.test.ts  # e2e-run-lib.mjs 的 vitest 单测（框架自测，见「框架自测」）
     │   ├── vitest.config.ts     # 上述单测的 vitest 配置
+    │   ├── lint-run.mjs         # 编程规范（lint）硬门禁运行器（R15，见 AGENTS.md §8.2）
+    │   ├── lint-run-lib.mjs     # lint-run.mjs 的纯函数库（gatePassed 判据）
+    │   ├── static-scan-run.mjs     # 静态代码质量硬门禁运行器（R16：重复代码+安全扫描，见 AGENTS.md §8.2）
+    │   ├── static-scan-run-lib.mjs # static-scan-run.mjs 的纯函数库（gatePassed 判据）
     │   ├── qa-run.mjs           # 跨技术栈 QA 命令运行器（Windows 退出码不可靠时的留痕手段）
     │   ├── gate-selftest.mjs    # 门禁逻辑回归自检（库函数单元级）
     │   └── gate-scenarios.mjs   # 场景级门禁回归（端到端真调 5 个 Hook；框架维护用，不参与宿主项目开发）
@@ -72,9 +76,9 @@ trae/                         # 适配 Trae 的完整规约根（目录名任意
 
 Harness 自带回归自测，用于在修改 Hook / 脚本 / 模板后验证门禁判定逻辑未被破坏：
 
-- **门禁逻辑自检（单元级）**：`node .trae/scripts/gate-selftest.mjs`（纯 Node，无需额外依赖；覆盖 R3 / R6 / B1 / R9 / R10 / R11 / R13 最低必测集及 Finding #1 回归，退出码非 0 即失败）。
-- **场景级门禁回归（端到端）**：`node .trae/scripts/gate-scenarios.mjs`（纯 Node，无需额外依赖）。它**真正 spawn 框架自己的 5 个 Hook 入口脚本**（`gate-role-sequence` / `gate-dev-workflow` / `gate-dev-shell` / `gate-toolchain-install` / `gate-stop-workflow`），在隔离 fixture（`test-results/.gate-scenarios/`，经 `HARNESS_PROCESS_PATH` / `HARNESS_GATED_ARTIFACTS_PATH` 指向）上逐条断言 `allow/deny/ask/followup`，E2E 判据用 `e2e-run-lib.mjs` 真实计算；覆盖 Greenfield / Feature / Hotfix（R11 折叠）/ 对抗健壮性 / Finding #1 与 Finding #2 回归，退出码非 0 即失败。附 `--verbose` 打印每步 deny/ask/followup 首行原因。
-  - **定位**：此套件是**规约框架自身的维护用回归测试**，由早期一次性评估探针（原 `eval/`）沉淀而来；它**不参与任何宿主项目的开发流程**，不被 `hooks.json` / `qa-run.mjs` / `e2e-run.mjs` 引用，全程使用自建隔离 fixture，运行前会快照、运行后会还原 `test-results/e2e/` 下的运行时产物，不改动 `docs/` 成果物。
+- **门禁逻辑自检（单元级）**：`node .trae/scripts/gate-selftest.mjs`（纯 Node，无需额外依赖；覆盖 R3 / R6 / B1 / R9 / R10 / R11 / R13 / R14 / R15 / **R16** 最低必测集及 Finding #1 回归，退出码非 0 即失败）。
+- **场景级门禁回归（端到端）**：`node .trae/scripts/gate-scenarios.mjs`（纯 Node，无需额外依赖）。它**真正 spawn 框架自己的 5 个 Hook 入口脚本**（`gate-role-sequence` / `gate-dev-workflow` / `gate-dev-shell` / `gate-toolchain-install` / `gate-stop-workflow`），在隔离 fixture（`test-results/.gate-scenarios/`，经 `HARNESS_PROCESS_PATH` / `HARNESS_GATED_ARTIFACTS_PATH` 指向）上逐条断言 `allow/deny/ask/followup`，E2E 判据用 `e2e-run-lib.mjs` 真实计算；覆盖 Greenfield / Feature / Hotfix（R11 折叠）/ 对抗健壮性 / R14 批次接口测试报告 / R15 编程规范 lint 门禁 / **R16 静态代码质量门禁** / Finding #1 与 Finding #2 回归，退出码非 0 即失败。附 `--verbose` 打印每步 deny/ask/followup 首行原因。
+  - **定位**：此套件是**规约框架自身的维护用回归测试**，由早期一次性评估探针（原 `eval/`）沉淀而来；它**不参与任何宿主项目的开发流程**，不被 `hooks.json` / `qa-run.mjs` / `lint-run.mjs` / `static-scan-run.mjs` / `e2e-run.mjs` 引用，全程使用自建隔离 fixture，运行前会快照、运行后会还原 `test-results/e2e/`、`test-results/qa/.lint-result.json` 与 `test-results/qa/.static-scan-result.json` 下的运行时产物，不改动 `docs/` 成果物。
   - **何时运行**：改动任一 Hook、`workflow-gate-lib.mjs`、`e2e-run-lib.mjs`、门禁相关脚本或 `.trae/templates/process.md` 后，先跑 `gate-selftest.mjs` 再跑 `gate-scenarios.mjs`；两者全绿方可提交（呼应 AGENTS.md R12「只可加强，不可放松」——回归失败即意味着门禁被意外放松/破坏）。
 - **`e2e-run-lib` 单测**：`.trae/scripts/e2e-run-lib.test.ts` 使用 vitest（配置见 `.trae/scripts/vitest.config.ts`）。本框架目录不预置 `package.json`，运行前需先在工作区安装 vitest，例如：
 
@@ -102,3 +106,11 @@ Feature 迭代时，对应文件位于 `docs/{feature-名称}/design/gated-artif
 ## 配置说明
 
 配置项见 `.trae/harness.config.json`。修改 Hook 或配置后，请同步更新 `AGENTS.md`「流程门禁 Hook」一节。
+
+### 编程规范 lint 门禁（R15）
+
+QA 阶段须运行 `node .trae/scripts/lint-run.mjs`，机读产物 `test-results/qa/.lint-result.json`（`gatePassed=true`）为发起 test-engineer 与全流程收尾的前置条件；判据见 `AGENTS.md` §8.2。**lint 命令默认已内置**（按 `package.json` / `pyproject.toml` / `go.mod` 等自动探测，见 `lint-run-lib.mjs`）；宿主项目**通常不必**手配 `qa.commands.lint`，仅 monorepo 或自定义脚本名时覆盖。系统架构师在设计 §5 填入与默认一致的留痕即可。
+
+### 静态代码质量门禁（R16：重复代码 + 安全静态扫描）
+
+QA 阶段须运行 `node .trae/scripts/static-scan-run.mjs`，机读产物 `test-results/qa/.static-scan-result.json`（`gatePassed=true`）为发起 test-engineer 与全流程收尾的前置条件；判据见 `AGENTS.md` §8.2。默认工具 `jscpd-rs`（重复代码检测）与 `gitleaks-secret-scanner`（密钥泄露扫描）均经 `npx` 获取，**跨技术栈通用、无需按栈适配**（本框架已要求 `Node.js >= 18`）。**首次运行需联网**拉取两个 npm 包；建议将其固化为项目 devDependency（走既有 `npm install` 门禁确认流程）以避免重复下载，离线环境可走 `qa.commands.dupCheck`/`qa.commands.securityScan` 覆盖或 `dupCheckApplicability`/`securityScanApplicability: "n/a"` 双要素豁免。

@@ -14,6 +14,7 @@
  *     HARNESS_GATED_ARTIFACTS_PATH 指向），不依赖、不改动宿主项目的 `docs/` 成果物。
  *
  * 覆盖场景矩阵：Greenfield(full) / Feature(full) / Hotfix(R11 折叠) / 对抗健壮性 /
+ * R14 批次接口测试报告 / R15 编程规范 lint 门禁 / R16 静态代码质量门禁 /
  * Finding #1（出厂模板阻塞误判）端到端回归。
  *
  * 用法：
@@ -353,23 +354,37 @@ function check(label, expect, opts) {
 }
 
 // ---------------------------------------------------------------------------
-// E2E 结果产物（快照 / 计算 / 还原）
+// E2E 结果产物 + R15/R16 机读产物（快照 / 计算 / 还原）
 // ---------------------------------------------------------------------------
 const E2E_FILES = {
   batch: path.join(E2E_DIR, '.e2e-batch-result.json'),
   final: path.join(E2E_DIR, '.e2e-final-result.json'),
 };
+const QA_DIR = path.join(PROJECT_ROOT, 'test-results/qa');
+const QA_FILES = {
+  lint: path.join(QA_DIR, '.lint-result.json'),
+  staticScan: path.join(QA_DIR, '.static-scan-result.json'),
+};
 const e2eSnapshot = {};
+const qaSnapshot = {};
 
 function snapshotE2e() {
   for (const [scope, file] of Object.entries(E2E_FILES)) {
     e2eSnapshot[scope] = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+  }
+  for (const [key, file] of Object.entries(QA_FILES)) {
+    qaSnapshot[key] = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
   }
 }
 
 function restoreE2e() {
   for (const [scope, file] of Object.entries(E2E_FILES)) {
     const snap = e2eSnapshot[scope];
+    if (snap === null) fs.rmSync(file, { force: true });
+    else fs.writeFileSync(file, snap, 'utf8');
+  }
+  for (const [key, file] of Object.entries(QA_FILES)) {
+    const snap = qaSnapshot[key];
     if (snap === null) fs.rmSync(file, { force: true });
     else fs.writeFileSync(file, snap, 'utf8');
   }
@@ -536,6 +551,46 @@ function greenfieldScenarios() {
   writeE2e('final', { requiredIds: ['R-001'], passed: ['R-001'] });
   check('G11 最终 E2E 通过后收尾（唯一放行点）', 'allow-stop', {
     hook: 'stop', processPath: relToProject(path.join(stopFinal, 'docs/process/process.md')),
+  });
+  clearE2e('batch');
+  clearE2e('final');
+
+  // R15/R16 场景：QA 完成但 lint/static scan 未通过，stop 门禁应 followup
+  const stopLintFail = writeFixture('gf-stop-lintfail', {
+    'docs/process/process.md': greenfieldReady([
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+    ]),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+  });
+  clearE2e('batch');
+  clearE2e('final');
+  check('G12 R15：QA 完成但 lint 门禁未通过', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopLintFail, 'docs/process/process.md')),
+  });
+
+  const stopStaticFail = writeFixture('gf-stop-staticfail', {
+    'docs/process/process.md': greenfieldReady([
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+      '| 测试工程师 | 最终整体集成测试 | 执行完成 | |',
+    ]),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+  });
+  writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
+  writeE2e('final', { requiredIds: ['R-001'], passed: ['R-001'] });
+  // lint 和 batch/final 均通过，但 static scan 未通过 → 仍不放行
+  check('G13 R16：最终 E2E 通过但 static scan 门禁未通过', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopStaticFail, 'docs/process/process.md')),
   });
   clearE2e('batch');
   clearE2e('final');

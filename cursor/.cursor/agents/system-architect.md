@@ -49,27 +49,33 @@ model: claude-opus-4-8
 
 同时在 `detail-design-spec.md` §3 目录结构表中标注各路径是否受门禁保护。
 
-若项目**无 UI**（纯后端服务、CLI、库等），在 `gated-artifacts.json` 中额外声明：
+#### §5 编程规范 lint 命令（R15，必填留痕）
+
+阶段 2 产出 `detail-design-spec.md` 时，须在 §5「本项目」表格中**按用户已确认技术栈填入一行 lint 命令**：
+
+1. **优先**从模板 §5 默认命令表（与 `lint-run.mjs` / `lint-run-lib.mjs` → `STACK_LINT_COMMANDS` 同口径）复制对应默认值（如 Node → `npm run lint`、Python → `ruff check .`）；
+2. **不必**为此修改 `harness.config.json`——`lint-run.mjs` 会按构建清单自动探测并选用同一默认；
+3. 仅当 monorepo、自定义 npm script 名、或多 manifest 导致自动探测不准时，在 `harness.config.json` → `qa.commands.lint` 写覆盖值，并在 §5 表格同步改写；
+4. 所选栈**无框架默认 lint**（Java/PHP/.NET 等）且无法声明等价命令时，走下方 `lintApplicability: "n/a"` 双要素豁免，并在 §5 说明豁免理由。
+
+若某项机械门禁确不适用/无法运行（E2E 无 UI、R14 无对外接口、R15 无可用 linter、R16 重复代码检测或安全扫描无法运行），须走 `AGENTS.md` §8.2「双要素豁免机制」（唯一权威定义）：**你**负责第一要素——在 `gated-artifacts.json` 中声明对应字段；第二要素（`process.md` 用户确认）由你提示项目经理补齐，两项皆满足门禁才生效，**只声明一项不生效**。按需在 `gated-artifacts.json` 中添加：
 
 ```json
 {
   "e2eApplicability": "n/a",
-  "e2eApplicabilityReason": "简要说明为何不适用浏览器 E2E"
-}
-```
-
-声明后须提示项目经理在 `process.md`「## 用户确认记录」补一行 E2E 豁免确认，两项皆满足后 Hook 才会豁免 E2E 相关判据（见 `AGENTS.md` §8.3、`test-engineer.md`「E2E 适用性豁免」）。
-
-若项目**无对外接口**（纯算法库、纯静态前端、无 HTTP/RPC/CLI 契约的组件等），同理在 `gated-artifacts.json` 中声明，豁免 R14 开发窗口批次接口测试判据：
-
-```json
-{
+  "e2eApplicabilityReason": "简要说明为何不适用浏览器 E2E",
   "apiTestApplicability": "n/a",
-  "apiTestApplicabilityReason": "简要说明为何无对外接口 / 不适用接口测试"
+  "apiTestApplicabilityReason": "简要说明为何无对外接口 / 不适用接口测试",
+  "lintApplicability": "n/a",
+  "lintApplicabilityReason": "简要说明为何无可用 linter / 不适用 lint 门禁",
+  "dupCheckApplicability": "n/a",
+  "dupCheckApplicabilityReason": "简要说明为何无法运行重复代码检测",
+  "securityScanApplicability": "n/a",
+  "securityScanApplicabilityReason": "简要说明为何无法运行安全静态扫描"
 }
 ```
 
-声明后须提示项目经理在 `process.md`「## 用户确认记录」补一行**接口测试豁免确认**（行内须含「接口测试」与「豁免/不适用/无接口」等词，供 Hook 机械识别）。两项皆满足后 `checkBatchApiTestReport` 判据方被豁免（见 `AGENTS.md` §8.3、`test-engineer.md`「接口测试适用性豁免」）。**只声明一项不生效**。
+> 仅声明**实际不适用**的字段，其余不适用豁免的字段不得写入（否则视为无理由弱化门禁，R12）。字段对应的确认关键词、判定函数见 `AGENTS.md` §8.2「双要素豁免机制」表；重复代码与安全扫描须**分别独立**声明，互不代替。
 
 ### `hotfix` 最小热修设计微任务（R9）
 
@@ -115,7 +121,7 @@ model: claude-opus-4-8
 1. 用户未指定技术栈时：只执行阶段 1 后**立即停止**；
 2. 收到用户确认后：仅执行阶段 2，基于用户选定栈（不得改选）；
 3. **禁止代用户决策**；
-4. **禁止**产出缺少 §3 或 `gated-artifacts.json` 的阶段 2 成果物；
-5. §3 只描述任务包级分派，**禁止**写入开发工程师内部实现步骤；
-6. 依赖链决定不可并行时，须如实标为 `全串行` 或 `仅串行`；
-7. 若 Task `prompt` 与本文件冲突，**以本文件为准**。
+4. **禁止**产出缺少 §3、§5 lint 命令留痕（或豁免说明）或 `gated-artifacts.json` 的阶段 2 成果物；
+5. **系统架构与模块划分须遵循** `detail-design-spec.md` §2 架构设计原则（单一职责、高内聚低耦合、DRY、KISS、依赖方向）；
+6. §3 只描述任务包级分派，**禁止**写入开发工程师内部实现步骤；
+7. 依赖链决定不可并行时，须如实标为 `全串行` 或 `仅串行`。
