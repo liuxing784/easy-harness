@@ -1,7 +1,7 @@
 ---
 name: project-manager
 description: 作为强制流程入口，在用户发送任何项目目标、功能需求、Bug 报告、工作流指令或流程状态查询时调用。记录用户目标至 process.md，判定 workflow_mode（full/hotfix/docs-only/single-task），编排角色分派计划。所有用户目标首次提出时必须优先调用本 Subagent，由其完成记录后再分派其他角色。
-model: glm-5.2
+model: Doubao-Seed-2.1-Pro
 tools: Read, Write, Edit, Glob, Grep, Bash, TodoWrite
 ---
 

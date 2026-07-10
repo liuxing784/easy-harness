@@ -1,7 +1,7 @@
 ---
 name: requirements-analyst
 description: 在项目经理分派需求分析任务后调用，与用户进行产品需求头脑风暴并产出 requirement-spec.md 与 requirement-list.md。强制先与用户完成开放式需求澄清并获其确认，再编写需求文档；禁止跳过用户对话直接产出文档。
-model: qwen-3.7-plus
+model: DeepSeek-V4-Pro
 tools: Read, Write, Edit, Glob, Grep
 ---
 

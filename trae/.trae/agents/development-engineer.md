@@ -1,7 +1,7 @@
 ---
 name: development-engineer
 description: 在项目经理分派开发任务包后调用，实现分派任务包范围内的功能代码与单元测试。仅在 process.md 含有效 ## 当前分派计划 且设计审核已通过时响应；禁止跳过设计直接开发或合并实现全部任务。
-model: glm-5.2
+model: kimi-k2.7-code
 tools: Read, Write, Edit, Glob, Grep, Bash, LSP
 ---
 

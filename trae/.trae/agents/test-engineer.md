@@ -1,7 +1,7 @@
 ---
 name: test-engineer
 description: 在项目经理分派测试任务后调用，执行集成测试与 E2E 并产出 test-report.md。运行 e2e-run.mjs（batch/final 两级），gatePassed≠true 时禁止宣告测试通过。
-model: DeepSeek-V4-Flash
+model: Doubao-Seed-2.1-Turbo
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 

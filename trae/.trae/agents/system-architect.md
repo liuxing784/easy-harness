@@ -1,7 +1,7 @@
 ---
 name: system-architect
 description: 在项目经理分派架构设计任务后调用，进行技术选型与详细设计。产出 tech-stack-options.md（阶段 1，待用户确认技术栈）或 detail-design-spec.md + develop-task-list.md + gated-artifacts.json（阶段 2，用户确认技术栈后）。禁止代用户做技术选型决策。
-model: DeepSeek-V4-Pro
+model: glm-5.2
 tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
 ---
 

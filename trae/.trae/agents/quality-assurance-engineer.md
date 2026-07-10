@@ -1,7 +1,7 @@
 ---
 name: quality-assurance-engineer
 description: 在项目经理分派质量审核任务后调用，审查功能代码并产出 quality-report.md。检查代码规范性、安全漏洞、架构一致性、单元测试完备性与依赖安全，按技术栈运行对应审计命令。
-model: qwen-3.7-plus
+model: Doubao-Seed-2.1-Turbo
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: product-manager
 description: 在项目经理分派设计审核任务后调用，审核 detail-design-spec.md 与 develop-task-list.md 并产出 design-problem-list.md。仅负责设计成果物审核，不参与需求挖掘或技术选型。
-model: qwen-3.7-plus
+model: Doubao-Seed-2.1-Turbo
 tools: Read, Write, Edit, Glob, Grep
 ---
 
