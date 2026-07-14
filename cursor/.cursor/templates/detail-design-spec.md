@@ -29,6 +29,12 @@
 
 （按项目技术栈：API 契约、数据库 schema、状态管理等）
 
+**业务数据存储介质（R17 输入，须明确）**：声明本项目业务数据是否写入持久化/缓存介质；若写入，列出类别（与 AGENTS.md §8.3 R17 存储介质范围一致：数据库 / 文件 / 缓存 / 对象存储 / 其他）。无上述写入时可走 R17 双要素豁免。写路径涉及几种介质，测试对账就覆盖几种。
+
+| 是否有业务数据存储 | 介质类别（可多选） | 具体系统/路径说明 |
+| ------------------ | ------------------ | ----------------- |
+| 是/否 | 数据库/文件/缓存/对象存储/其他 | |
+
 ## 5. 代码规范
 
 - 注释语言：（中文/英文，与项目约定一致）
@@ -81,9 +87,11 @@
 | 单元测试 | development-engineer | | |
 | 集成测试 | test-engineer | | |
 | 接口测试 | test-engineer | | 开发窗口批次集成测试阶段必测（R14，见 AGENTS.md §8.3）；覆盖各接口/契约 |
-| E2E（若适用） | test-engineer | Playwright Chromium headless | P0 场景，见 AGENTS.md §8.3 |
+| 存储对账 | test-engineer | | 开发窗口批次机读硬门禁（R17，见 AGENTS.md §8.3 / `checkBatchStorageReconciliationReport`）；介质范围见 §4 |
+| E2E（若适用） | test-engineer | Playwright Chromium headless | P0 场景，见 AGENTS.md §8.3；写路径对账留痕见 R17 |
 
 > 若项目无 UI 或不适用浏览器 E2E，须在 §7 `gated-artifacts.json` 中声明 `e2eApplicability: "n/a"` 并注明理由，等待用户在 `process.md`「用户确认记录」中确认豁免。
+> 若项目无业务数据持久化，须声明 `storageReconciliationApplicability: "n/a"` 并经用户确认后豁免 R17（见 AGENTS.md §8.2）。
 
 ## 7. 受门禁保护的产物声明
 

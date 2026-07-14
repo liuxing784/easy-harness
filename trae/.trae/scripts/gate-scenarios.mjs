@@ -15,7 +15,7 @@
  *
  * 覆盖场景矩阵：Greenfield(full) / Feature(full) / Hotfix(R11 折叠) / 对抗健壮性 /
  * R14 批次接口测试报告 / R15 编程规范 lint 门禁 / R16 静态代码质量门禁 /
- * Finding #1（出厂模板阻塞误判）端到端回归。
+ * R17 业务数据存储对账 / Finding #1（出厂模板阻塞误判）端到端回归。
  *
  * 用法：
  *   node .trae/scripts/gate-scenarios.mjs           # 运行全部场景
@@ -99,6 +99,69 @@ const DPL_CLEAN =
 const DPL_UNRESOLVED =
   '# 设计问题清单\n\n| 检查维度 | 问题描述 | 严重等级 | 是否存在 | 是否解决 | 关联成果物 |\n| --- | --- | --- | --- | --- | --- |\n| 功能 | 边界未定义 | 高 | 是 | 否 | detail-design-spec.md |\n';
 const GATED_EMPTY = '{}\n';
+// R14 + R17：含非空「## 接口测试报告」与「## 存储对账记录」（接口+E2E 行，合法介质）
+const TEST_REPORT_API = [
+  '# 测试报告',
+  '',
+  '## 接口测试报告',
+  '',
+  '| 接口 | 请求方法 | 关联需求 | 关联任务包 | 是否通过 |',
+  '| ---- | -------- | -------- | ---------- | -------- |',
+  '| /api/todos | POST | R-001 | T0-1 | 是 |',
+  '',
+  '## 存储对账记录',
+  '',
+  '| 场景类型 | 关联需求 | 关联任务包 | 存储介质 | 对账方式 | 预期存储结果 | 实际存储结果 | 是否通过 | 备注 |',
+  '| -------- | -------- | ---------- | -------- | -------- | ------------ | ------------ | -------- | ---- |',
+  '| 接口 | R-001 | T0-1 | 数据库 | SELECT id FROM todos | 有行 | 有行 | 是 | |',
+  '| E2E | R-001 | T0-1 | 缓存 | Redis GET todo:1 | 有值 | 有值 | 是 | |',
+  '',
+].join('\n');
+// R14 有接口报告但缺 R17 存储对账（用于 G10c）
+const TEST_REPORT_API_NO_STORAGE = [
+  '# 测试报告',
+  '',
+  '## 接口测试报告',
+  '',
+  '| 接口 | 请求方法 | 关联需求 | 关联任务包 | 是否通过 |',
+  '| ---- | -------- | -------- | ---------- | -------- |',
+  '| /api/todos | POST | R-001 | T0-1 | 是 |',
+  '',
+].join('\n');
+// R14 豁免后仅需 E2E 对账行（G11c）
+const TEST_REPORT_STORAGE_E2E_ONLY = [
+  '# 测试报告',
+  '',
+  '## 存储对账记录',
+  '',
+  '| 场景类型 | 关联需求 | 关联任务包 | 存储介质 | 对账方式 | 预期存储结果 | 实际存储结果 | 是否通过 | 备注 |',
+  '| -------- | -------- | ---------- | -------- | -------- | ------------ | ------------ | -------- | ---- |',
+  '| E2E | R-001 | T0-1 | 文件 | 读盘校验落盘文件 | 文件存在 | 文件存在 | 是 | |',
+  '',
+].join('\n');
+
+// R14：含接口测试豁免确认行的用户确认记录 + 无对外接口的 gated-artifacts 声明
+const API_EXEMPT_CONFIRM = [
+  '## 用户确认记录',
+  '',
+  '| 确认项 | 时间 | 用户原话摘要 |',
+  '| ------ | ---- | ------------ |',
+  '| 需求摘要 | 2026-01-01 | 已确认 |',
+  '| 接口测试豁免 | 2026-01-01 | 纯算法库无对外接口，确认豁免接口测试 |',
+].join('\n');
+const API_NA_GATED = '{\n  "apiTestApplicability": "n/a",\n  "apiTestApplicabilityReason": "纯算法库无对外接口"\n}\n';
+
+// R17：含存储对账豁免确认行的用户确认记录 + 无持久化的 gated-artifacts 声明
+const STORAGE_EXEMPT_CONFIRM = [
+  '## 用户确认记录',
+  '',
+  '| 确认项 | 时间 | 用户原话摘要 |',
+  '| ------ | ---- | ------------ |',
+  '| 需求摘要 | 2026-01-01 | 已确认 |',
+  '| 存储对账豁免 | 2026-01-01 | 无业务数据持久化，确认豁免存储对账 |',
+].join('\n');
+const STORAGE_NA_GATED =
+  '{\n  "storageReconciliationApplicability": "n/a",\n  "storageReconciliationApplicabilityReason": "无业务数据持久化"\n}\n';
 
 function progressSection(rows = []) {
   return [
@@ -126,6 +189,56 @@ function greenfieldReady(progressRows = []) {
     ARTIFACT_REF,
     '',
     CONFIRM_SECTION,
+    '',
+    DISPATCH_SECTION,
+    '',
+    progressSection(progressRows),
+    '',
+    BLOCK_OK,
+    '',
+  ].join('\n');
+}
+
+function greenfieldApiExempt(progressRows = []) {
+  return [
+    '---',
+    'phase: development',
+    'workflow_mode: full',
+    'iterationType: greenfield',
+    'blocking: false',
+    'cancelled: false',
+    '---',
+    '',
+    '# 流程进度记录',
+    '',
+    ARTIFACT_REF,
+    '',
+    API_EXEMPT_CONFIRM,
+    '',
+    DISPATCH_SECTION,
+    '',
+    progressSection(progressRows),
+    '',
+    BLOCK_OK,
+    '',
+  ].join('\n');
+}
+
+function greenfieldStorageExempt(progressRows = []) {
+  return [
+    '---',
+    'phase: development',
+    'workflow_mode: full',
+    'iterationType: greenfield',
+    'blocking: false',
+    'cancelled: false',
+    '---',
+    '',
+    '# 流程进度记录',
+    '',
+    ARTIFACT_REF,
+    '',
+    STORAGE_EXEMPT_CONFIRM,
     '',
     DISPATCH_SECTION,
     '',
@@ -425,6 +538,77 @@ function clearE2e(scope) {
   fs.rmSync(E2E_FILES[scope], { force: true });
 }
 
+function writeLintPass() {
+  fs.mkdirSync(QA_DIR, { recursive: true });
+  const result = {
+    gatePassed: true,
+    reason: 'passed',
+    stack: 'node',
+    command: 'npm run lint',
+    exitCode: 0,
+    executedAt: new Date().toISOString(),
+    _note: 'Synthesized by gate-scenarios.mjs for regression only.',
+  };
+  fs.writeFileSync(QA_FILES.lint, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+}
+
+function writeLintFail() {
+  fs.mkdirSync(QA_DIR, { recursive: true });
+  const result = {
+    gatePassed: false,
+    reason: 'lint-failed',
+    stack: 'node',
+    command: 'npm run lint',
+    exitCode: 1,
+    executedAt: new Date().toISOString(),
+    _note: 'Synthesized by gate-scenarios.mjs for regression only.',
+  };
+  fs.writeFileSync(QA_FILES.lint, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+}
+
+function clearLint() {
+  fs.rmSync(QA_FILES.lint, { force: true });
+}
+
+function writeStaticScanResult(result) {
+  fs.mkdirSync(QA_DIR, { recursive: true });
+  fs.writeFileSync(QA_FILES.staticScan, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+}
+
+function writeStaticScanPass() {
+  writeStaticScanResult({
+    gatePassed: true,
+    duplication: { gatePassed: true, reason: 'passed', command: 'jscpd-rs .', exitCode: 0 },
+    security: { gatePassed: true, reason: 'passed', command: 'gitleaks-secret-scanner', exitCode: 0 },
+    executedAt: new Date().toISOString(),
+    _note: 'Synthesized by gate-scenarios.mjs for regression only.',
+  });
+}
+
+function writeStaticScanDupFail() {
+  writeStaticScanResult({
+    gatePassed: false,
+    duplication: { gatePassed: false, reason: 'scan-failed', command: 'jscpd-rs .', exitCode: 1 },
+    security: { gatePassed: true, reason: 'passed', command: 'gitleaks-secret-scanner', exitCode: 0 },
+    executedAt: new Date().toISOString(),
+    _note: 'Synthesized by gate-scenarios.mjs for regression only.',
+  });
+}
+
+function writeStaticScanSecurityFail() {
+  writeStaticScanResult({
+    gatePassed: false,
+    duplication: { gatePassed: true, reason: 'passed', command: 'jscpd-rs .', exitCode: 0 },
+    security: { gatePassed: false, reason: 'scan-failed', command: 'gitleaks-secret-scanner', exitCode: 1 },
+    executedAt: new Date().toISOString(),
+    _note: 'Synthesized by gate-scenarios.mjs for regression only.',
+  });
+}
+
+function clearStaticScan() {
+  fs.rmSync(QA_FILES.staticScan, { force: true });
+}
+
 // ---------------------------------------------------------------------------
 // 场景
 // ---------------------------------------------------------------------------
@@ -534,6 +718,47 @@ function greenfieldScenarios() {
     hook: 'stop', processPath: relToProject(path.join(stopBatchFail, 'docs/process/process.md')),
   });
 
+  const stopBatchNoApi = writeFixture('gf-stop-batch-noapi', {
+    'docs/process/process.md': greenfieldReady([
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+    ]),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+  });
+  writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
+  clearE2e('final');
+  writeLintPass();
+  writeStaticScanPass();
+  check('G10b R14：批次 E2E 过但缺接口测试报告章节', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopBatchNoApi, 'docs/process/process.md')),
+  });
+
+  const stopBatchNoStorage = writeFixture('gf-stop-batch-nostorage', {
+    'docs/process/process.md': greenfieldReady([
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+    ]),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+    'docs/test/test-report.md': TEST_REPORT_API_NO_STORAGE,
+  });
+  writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
+  clearE2e('final');
+  writeLintPass();
+  writeStaticScanPass();
+  check('G10c R17：批次 E2E+接口报告齐但缺存储对账记录', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopBatchNoStorage, 'docs/process/process.md')),
+  });
+
   const stopFinal = writeFixture('gf-stop-final', {
     'docs/process/process.md': greenfieldReady([
       '| 开发工程师 | T0-1 | 执行完成 | |',
@@ -546,14 +771,118 @@ function greenfieldScenarios() {
     'docs/design/detail-design-spec.md': DESIGN_SPEC,
     'docs/design/develop-task-list.md': TASK_LIST,
     'docs/design/design-problem-list.md': DPL_CLEAN,
+    'docs/test/test-report.md': TEST_REPORT_API,
   });
   writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
   writeE2e('final', { requiredIds: ['R-001'], passed: ['R-001'] });
-  check('G11 最终 E2E 通过后收尾（唯一放行点）', 'allow-stop', {
+  writeLintPass();
+  writeStaticScanPass();
+  check('G11 最终 E2E 通过 + 批次接口测试报告齐备 + lint 通过 + 静态代码质量门禁通过后收尾（唯一放行点）', 'allow-stop', {
     hook: 'stop', processPath: relToProject(path.join(stopFinal, 'docs/process/process.md')),
   });
   clearE2e('batch');
   clearE2e('final');
+
+  const stopApiNaOnly = writeFixture('gf-stop-apina-only', {
+    'docs/process/process.md': greenfieldReady([
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+    ]),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+    'docs/design/gated-artifacts.json': API_NA_GATED,
+  });
+  writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
+  clearE2e('final');
+  writeLintPass();
+  writeStaticScanPass();
+  check('G11b R14：仅声明 apiTestApplicability n/a 但无用户确认 → 不豁免', 'followup', {
+    hook: 'stop',
+    processPath: relToProject(path.join(stopApiNaOnly, 'docs/process/process.md')),
+    gatedPath: relToProject(path.join(stopApiNaOnly, 'docs/design/gated-artifacts.json')),
+  });
+
+  const stopApiExempt = writeFixture('gf-stop-apiexempt', {
+    'docs/process/process.md': greenfieldApiExempt([
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+      '| 测试工程师 | 最终整体集成测试 | 执行完成 | |',
+    ]),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+    'docs/design/gated-artifacts.json': API_NA_GATED,
+    'docs/test/test-report.md': TEST_REPORT_STORAGE_E2E_ONLY,
+  });
+  writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
+  writeE2e('final', { requiredIds: ['R-001'], passed: ['R-001'] });
+  writeLintPass();
+  writeStaticScanPass();
+  check('G11c R14：无接口项目声明豁免 + 用户确认后无接口测试报告也可收尾', 'allow-stop', {
+    hook: 'stop',
+    processPath: relToProject(path.join(stopApiExempt, 'docs/process/process.md')),
+    gatedPath: relToProject(path.join(stopApiExempt, 'docs/design/gated-artifacts.json')),
+  });
+
+  const stopStorageNaOnly = writeFixture('gf-stop-storagena-only', {
+    'docs/process/process.md': greenfieldReady([
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+    ]),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+    'docs/design/gated-artifacts.json': STORAGE_NA_GATED,
+    'docs/test/test-report.md': TEST_REPORT_API_NO_STORAGE,
+  });
+  writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
+  clearE2e('final');
+  writeLintPass();
+  writeStaticScanPass();
+  check('G11d R17：仅声明 storageReconciliationApplicability n/a 但无用户确认 → 不豁免', 'followup', {
+    hook: 'stop',
+    processPath: relToProject(path.join(stopStorageNaOnly, 'docs/process/process.md')),
+    gatedPath: relToProject(path.join(stopStorageNaOnly, 'docs/design/gated-artifacts.json')),
+  });
+
+  const stopStorageExempt = writeFixture('gf-stop-storageexempt', {
+    'docs/process/process.md': greenfieldStorageExempt([
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+      '| 测试工程师 | 最终整体集成测试 | 执行完成 | |',
+    ]),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+    'docs/design/gated-artifacts.json': STORAGE_NA_GATED,
+    'docs/test/test-report.md': TEST_REPORT_API_NO_STORAGE,
+  });
+  writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
+  writeE2e('final', { requiredIds: ['R-001'], passed: ['R-001'] });
+  writeLintPass();
+  writeStaticScanPass();
+  check('G11e R17：无持久化声明豁免 + 用户确认后无存储对账记录也可收尾', 'allow-stop', {
+    hook: 'stop',
+    processPath: relToProject(path.join(stopStorageExempt, 'docs/process/process.md')),
+    gatedPath: relToProject(path.join(stopStorageExempt, 'docs/design/gated-artifacts.json')),
+  });
+  clearE2e('batch');
+  clearE2e('final');
+  clearLint();
+  clearStaticScan();
 
   // R15/R16 场景：QA 完成但 lint/static scan 未通过，stop 门禁应 followup
   const stopLintFail = writeFixture('gf-stop-lintfail', {
@@ -674,10 +1003,14 @@ function hotfixScenarios() {
     'docs/design/detail-design-spec.md': DESIGN_SPEC,
   });
   writeE2e('final', { requiredIds: ['R-001'], passed: ['R-001'] });
+  writeLintPass();
+  writeStaticScanPass();
   check('H5 R11：单次集成测试 + 最终 E2E 通过后收尾', 'allow-stop', {
     hook: 'stop', processPath: relToProject(path.join(stopFinal, 'docs/process/process.md')),
   });
   clearE2e('final');
+  clearLint();
+  clearStaticScan();
 }
 
 function adversarialScenarios() {

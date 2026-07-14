@@ -88,16 +88,17 @@ tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
 
 ### 门禁适用性豁免（声明模板）
 
-以下四项豁免（接口测试 / lint / 重复代码 / 安全扫描）遵循同一模式：架构师在 `gated-artifacts.json` 声明对应字段为 `"n/a"`（含原因），并提示项目经理在 `process.md`「## 用户确认记录」补一行豁免确认（行内须含对应关键词）。**两项皆满足方生效，只声明一项不生效**。各豁免的关键字段、关键词与 Hook 函数如下：
+以下五项豁免（接口测试 / 存储对账 / lint / 重复代码 / 安全扫描）遵循同一模式：架构师在 `gated-artifacts.json` 声明对应字段为 `"n/a"`（含原因），并提示项目经理在 `process.md`「## 用户确认记录」补一行豁免确认（行内须含对应关键词）。**两项皆满足方生效，只声明一项不生效**。各豁免的关键字段、关键词与 Hook 函数如下：
 
 | 豁免项 | `gated-artifacts.json` 字段 | 用户确认行关键词 | Hook 函数 |
 | ------ | --------------------------- | ---------------- | --------- |
 | 接口测试（R14） | `apiTestApplicability` / `apiTestApplicabilityReason` | 「接口测试」+「豁免/不适用/无接口」 | `isApiTestExempt()` |
+| 存储对账（R17） | `storageReconciliationApplicability` / `storageReconciliationApplicabilityReason` | 「存储对账/对账」+「豁免/不适用/无持久化」 | `isStorageReconciliationExempt()` |
 | 编程规范 lint（R15） | `lintApplicability` / `lintApplicabilityReason` | 「编程规范/代码规范/lint」+「豁免/不适用/无」 | `isLintExempt()` |
 | 重复代码检测（R16） | `dupCheckApplicability` / `dupCheckApplicabilityReason` | 「重复代码/DRY/jscpd」+「豁免/不适用/无」 | `isDupCheckExempt()` |
 | 安全静态扫描（R16） | `securityScanApplicability` / `securityScanApplicabilityReason` | 「安全扫描/安全静态扫描/密钥扫描」+「豁免/不适用/无」 | `isSecurityScanExempt()` |
 
-重复代码与安全扫描须**分别独立**声明，互不代替。E2E 适用性豁免（`e2eApplicability`）同此模式，关键词见 `test-engineer.md`。声明后须提示项目经理补确认行。
+重复代码与安全扫描须**分别独立**声明，互不代替。E2E 适用性豁免（`e2eApplicability`）同此模式，关键词见 `test-engineer.md`。声明后须提示项目经理补确认行。`detail-design-spec.md` §4 须声明业务数据存储介质（R17 输入）。
 
 ### `hotfix` 最小热修设计微任务（R9）
 

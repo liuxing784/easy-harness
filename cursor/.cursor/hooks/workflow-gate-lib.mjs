@@ -913,6 +913,279 @@ export function checkDesignReviewClean() {
 }
 
 /**
+ * E2E 适用性豁免——无 UI 项目可豁免浏览器 E2E 相关判据，判定遵循 §8.2 双要素：
+ * ①`gated-artifacts.json` 声明 `e2eApplicability: "n/a"`；
+ * ②`process.md`「## 用户确认记录」含一行 E2E 豁免确认。两项皆满足才豁免（R12）。
+ * 供 R17 分类型行（场景类型=E2E）机读联立使用。
+ */
+function hasE2eExemptionConfirmation(content) {
+  const body = extractSection(content, '用户确认记录');
+  if (!body) return false;
+  for (const line of body.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('|')) continue;
+    if (/^\|[\s|:-]+\|?$/.test(t)) continue;
+    if (/e2e/i.test(t) && /豁免|不适用|n\/a|无/i.test(t)) return true;
+  }
+  return false;
+}
+
+export function isE2eExempt(content) {
+  const artifacts = loadGatedArtifacts();
+  if (artifacts.e2eApplicability !== 'n/a') return false;
+  const md = content ?? readProcessMd();
+  if (!md) return false;
+  return hasE2eExemptionConfirmation(md);
+}
+
+/**
+ * R17：业务数据存储对账适用性豁免——无业务数据持久化（数据库/文件/缓存/对象存储等）
+ * 的项目可豁免 R17 机读判据，判定与 R14 同构（§8.2 双要素）：
+ * ①`gated-artifacts.json` 声明 `storageReconciliationApplicability: "n/a"`；
+ * ②`process.md`「## 用户确认记录」含一行存储对账豁免确认。两项皆满足才豁免（R12）。
+ */
+function hasStorageReconciliationExemptionConfirmation(content) {
+  const body = extractSection(content, '用户确认记录');
+  if (!body) return false;
+  for (const line of body.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('|')) continue;
+    if (/^\|[\s|:-]+\|?$/.test(t)) continue;
+    if (/存储对账|对账/i.test(t) && /豁免|不适用|n\/a|无持久化/i.test(t)) return true;
+  }
+  return false;
+}
+
+export function isStorageReconciliationExempt(content) {
+  const artifacts = loadGatedArtifacts();
+  if (artifacts.storageReconciliationApplicability !== 'n/a') return false;
+  const md = content ?? readProcessMd();
+  if (!md) return false;
+  return hasStorageReconciliationExemptionConfirmation(md);
+}
+
+/** R17：具名存储介质关键词（与 AGENTS.md §8.3 一致；不含「其他」「不适用」） */
+const STORAGE_MEDIUM_NAMED_RE =
+  /数据库|\bdb\b|database|文件|filesystem|\bfile\b|缓存|\bcache\b|对象存储|\bobject\b|\bblob\b|\bs3\b|\boss\b|\bminio\b/i;
+
+/** R17：兜底介质「其他」——须另填非空备注说明具体系统（真实落盘介质，不可用于「无写入」） */
+const STORAGE_MEDIUM_OTHER_RE = /其他|\bother\b/i;
+
+/**
+ * R17：任务包级「不适用」介质——仅用于批次内确无业务数据写入的任务包留痕；
+ * 只参与任务包覆盖，不计入接口/E2E 分类型真实对账判定（防用「其他」伪装绕过）。
+ */
+const STORAGE_MEDIUM_NA_RE = /不适用|n\/a/i;
+
+/** R17：场景类型=接口 */
+const STORAGE_SCENE_API_RE = /接口|\bapi\b/i;
+
+/** R17：场景类型=E2E */
+const STORAGE_SCENE_E2E_RE = /e2e|\bui\b/i;
+
+/** R17：该行是否为「不适用」留痕行（非真实对账） */
+function isStorageReconNaRow(row) {
+  if (!row?.medium) return false;
+  if (STORAGE_MEDIUM_NAMED_RE.test(row.medium)) return false;
+  if (STORAGE_MEDIUM_OTHER_RE.test(row.medium)) return false;
+  return STORAGE_MEDIUM_NA_RE.test(row.medium);
+}
+
+/** R17：从进度行提取全部任务包编号（同一行可含多个，如 T0-1 与 T0-2） */
+function extractAllTaskCodes(rowText) {
+  const re = /\b([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+(?:\/\d+)*)\b/g;
+  const codes = [];
+  for (const m of rowText.matchAll(re)) codes.push(m[1]);
+  return codes;
+}
+
+/**
+ * R17：收集「## 进度列表」中测试工程师**已完成**的批次集成测试行所关联的任务包编号。
+ * 用于按批次强制覆盖——每条已完成批次测试进度中的任务包，须在「## 存储对账记录」
+ * 「关联任务包」列中至少出现一次（避免首批填过一次后后续批次空跑过门禁）。
+ */
+function collectCompletedBatchTestTaskCodes(content) {
+  const body = extractSection(content, '进度列表');
+  if (!body) return [];
+  const roleAliases = ROLE_ALIASES['测试工程师'] ?? ['测试工程师'];
+  const codes = new Set();
+  for (const line of body.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('|')) continue;
+    if (/^\|[\s|:-]+\|?$/.test(t)) continue;
+    if (!roleAliases.some((alias) => t.includes(alias))) continue;
+    if (/最终整体集成测试|最终集成测试|TE-FINAL|TE-最终/i.test(t)) continue;
+    if (/已作废|superseded/i.test(t)) continue;
+    if (!t.includes('执行完成')) continue;
+    for (const code of extractAllTaskCodes(t)) codes.add(code);
+  }
+  return [...codes];
+}
+
+/**
+ * 解析「## 存储对账记录」章节内表格的数据行。
+ * 要求表头含：场景类型、关联任务包、存储介质、对账方式、预期存储结果、实际存储结果、是否通过；
+ * 「备注」列可选（介质为「其他」时必填，在校验阶段强制）。
+ * @returns {{ ok: false, reason: string } | { ok: true, rows: object[] }}
+ */
+function parseStorageReconciliationRows(content) {
+  const body = extractSection(content, '存储对账记录');
+  if (!body) return { ok: false, reason: 'no-storage-recon-section' };
+  const tables = parseMarkdownTables(body);
+  if (tables.length === 0) return { ok: false, reason: 'no-storage-recon-table' };
+  for (const table of tables) {
+    const sceneIdx = table.headers.findIndex((h) => /场景类型/.test(h));
+    const taskIdx = table.headers.findIndex((h) => /关联任务包/.test(h));
+    const mediumIdx = table.headers.findIndex((h) => /存储介质/.test(h));
+    const methodIdx = table.headers.findIndex((h) => /对账方式/.test(h));
+    const expectedIdx = table.headers.findIndex((h) => /预期存储结果/.test(h));
+    const actualIdx = table.headers.findIndex((h) => /实际存储结果/.test(h));
+    const passIdx = table.headers.findIndex((h) => /是否通过/.test(h));
+    const noteIdx = table.headers.findIndex((h) => /^备注$/.test(h) || /备注/.test(h));
+    if (
+      sceneIdx === -1 ||
+      taskIdx === -1 ||
+      mediumIdx === -1 ||
+      methodIdx === -1 ||
+      expectedIdx === -1 ||
+      actualIdx === -1 ||
+      passIdx === -1
+    ) {
+      continue;
+    }
+    const rows = [];
+    for (const row of table.rows) {
+      const scene = (row[sceneIdx] ?? '').trim();
+      const taskPkg = (row[taskIdx] ?? '').trim();
+      const medium = (row[mediumIdx] ?? '').trim();
+      const method = (row[methodIdx] ?? '').trim();
+      const expected = (row[expectedIdx] ?? '').trim();
+      const actual = (row[actualIdx] ?? '').trim();
+      const passed = (row[passIdx] ?? '').trim();
+      const note = noteIdx >= 0 ? (row[noteIdx] ?? '').trim() : '';
+      // 跳过全空占位行
+      if (
+        !scene &&
+        !taskPkg &&
+        !medium &&
+        !method &&
+        !expected &&
+        !actual &&
+        !passed &&
+        !note &&
+        row.every((c) => !(c ?? '').trim())
+      ) {
+        continue;
+      }
+      rows.push({ scene, taskPkg, medium, method, expected, actual, passed, note });
+    }
+    if (rows.length === 0) return { ok: false, reason: 'no-storage-recon-data-row' };
+    return { ok: true, rows };
+  }
+  return { ok: false, reason: 'no-storage-recon-required-columns' };
+}
+
+/**
+ * 校验单行存储对账字段完备性（描述列非空、「其他」/「不适用」备注、介质关键词）。
+ * 「不适用」行：备注必填说明理由；描述列可填「不适用」；不校验具名介质。
+ * @returns {string|null} 失败 reason，通过则 null
+ */
+function validateStorageReconRow(row) {
+  if (!row.taskPkg) return 'missing-task-package';
+  if (!extractTaskCode(row.taskPkg)) return 'invalid-task-package';
+  if (!row.method) return 'missing-recon-method';
+  if (!row.expected) return 'missing-expected-result';
+  if (!row.actual) return 'missing-actual-result';
+  if (!row.passed) return 'missing-pass-result';
+  if (!row.medium) return 'invalid-storage-medium';
+  if (isStorageReconNaRow(row)) {
+    if (!row.note) return 'na-medium-requires-note';
+    return null;
+  }
+  const named = STORAGE_MEDIUM_NAMED_RE.test(row.medium);
+  const other = STORAGE_MEDIUM_OTHER_RE.test(row.medium);
+  if (!named && !other) return 'invalid-storage-medium';
+  if (other && !named && !row.note) return 'other-medium-requires-note';
+  return null;
+}
+
+/**
+ * R17：批次（开发窗口）集成测试阶段必须做业务数据存储对账——测试报告须含非空的
+ * 「## 存储对账记录」章节，且满足分类型行、描述列完备、「其他」/「不适用」备注、
+ * 存储介质列与批次任务包覆盖机读（AGENTS.md §8.3 唯一权威）。
+ * 「不适用」行仅计入任务包覆盖，不计入接口/E2E 分类型真实对账；项目未整体豁免时
+ * 至少须有一条适用（真实对账）行。
+ * 扫描当前活跃 docs 子树 `test/` 目录下所有 `*.md`；合并全部对账行后整体判定。
+ * 无业务持久化项目按 `isStorageReconciliationExempt()` 在 parseWorkflowState 侧豁免。
+ */
+export function checkBatchStorageReconciliationReport(content) {
+  const docsBase = getActiveDocsBase();
+  const testDir = path.join(docsBase, 'test');
+  if (!fs.existsSync(testDir)) return { ok: false, reason: 'missing-test-dir' };
+  let files;
+  try {
+    files = fs.readdirSync(testDir).filter((f) => f.toLowerCase().endsWith('.md'));
+  } catch {
+    return { ok: false, reason: 'test-dir-unreadable' };
+  }
+  if (files.length === 0) return { ok: false, reason: 'no-test-report' };
+
+  const md = content ?? readProcessMd() ?? '';
+  const needApiRow = !isApiTestExempt(md);
+  const needE2eRow = !isE2eExempt(md);
+  const requiredTaskCodes = collectCompletedBatchTestTaskCodes(md);
+
+  const allRows = [];
+  let lastReason = 'no-storage-recon-section';
+  for (const f of files) {
+    let fileContent;
+    try {
+      fileContent = fs.readFileSync(path.join(testDir, f), 'utf8');
+    } catch {
+      continue;
+    }
+    const parsed = parseStorageReconciliationRows(fileContent);
+    if (!parsed.ok) {
+      lastReason = parsed.reason;
+      continue;
+    }
+    allRows.push(...parsed.rows);
+  }
+  if (allRows.length === 0) return { ok: false, reason: lastReason };
+
+  for (const row of allRows) {
+    const rowFail = validateStorageReconRow(row);
+    if (rowFail) return { ok: false, reason: rowFail };
+  }
+
+  // 「不适用」行不计入分类型真实对账；项目未整体豁免时至少须有一条适用行
+  const applicableRows = allRows.filter((r) => !isStorageReconNaRow(r));
+  if (applicableRows.length === 0) {
+    return { ok: false, reason: 'missing-applicable-recon-row' };
+  }
+
+  const hasApi = applicableRows.some((r) => STORAGE_SCENE_API_RE.test(r.scene));
+  const hasE2e = applicableRows.some((r) => STORAGE_SCENE_E2E_RE.test(r.scene));
+  if (needApiRow && !hasApi) return { ok: false, reason: 'missing-api-scene-row' };
+  if (needE2eRow && !hasE2e) return { ok: false, reason: 'missing-e2e-scene-row' };
+
+  // 按批次任务包覆盖：进度中已完成的批次测试任务包，须在对账「关联任务包」列出现
+  // （含「不适用」留痕行——它们只服务覆盖，不服务分类型判定）
+  if (requiredTaskCodes.length > 0) {
+    const covered = new Set();
+    for (const row of allRows) {
+      for (const code of extractAllTaskCodes(row.taskPkg)) covered.add(code);
+    }
+    const missing = requiredTaskCodes.filter((c) => !covered.has(c));
+    if (missing.length > 0) {
+      return { ok: false, reason: `missing-batch-task-coverage:${missing.join(',')}` };
+    }
+  }
+
+  return { ok: true, reason: 'checked' };
+}
+
+/**
  * R14：接口测试适用性豁免——无对外接口的项目（纯算法库、纯静态前端、无 HTTP/RPC/CLI
  * 契约的组件等）可豁免「必须做接口测试」判据，判定与 E2E 适用性豁免同构（§8.3）：
  * 须同时满足①架构师在活跃 `gated-artifacts.json` 声明 `apiTestApplicability: "n/a"`；
@@ -1227,6 +1500,8 @@ export function parseWorkflowState(content) {
       finalE2ePassed: false,
       apiTestExempt: false,
       batchApiReportPresent: false,
+      storageReconciliationExempt: false,
+      batchStorageReconPresent: false,
       lintExempt: false,
       lintPassed: false,
       staticScanExempt: false,
@@ -1268,6 +1543,12 @@ export function parseWorkflowState(content) {
   const apiTestExempt = isApiTestExempt(content);
   const batchApiReportPresent = apiTestExempt || checkBatchApiTestReport().ok;
 
+  // R17：开发窗口批次集成测试阶段必须做业务数据存储对账；无业务持久化项目经双要素豁免后
+  // batchStorageReconPresent 视为满足（分类型行/存储介质列机读见 checkBatchStorageReconciliationReport）。
+  const storageReconciliationExempt = isStorageReconciliationExempt(content);
+  const batchStorageReconPresent =
+    storageReconciliationExempt || checkBatchStorageReconciliationReport(content).ok;
+
   // R15：编程规范（lint）硬门禁——QA 阶段须实际运行 lint 且 gatePassed=true（机读产物
   // test-results/qa/.lint-result.json）。docs-only 无开发窗口视为满足；确无可用 linter 项目
   // 经「架构师声明 lintApplicability:"n/a" + 用户确认」双要素豁免后视为满足（防单方面弱化，R12）。
@@ -1290,11 +1571,11 @@ export function parseWorkflowState(content) {
       (securityScanExempt || staticScanResult?.security?.gatePassed === true);
 
   // R11：hotfix 折叠批次/最终为单次通道——不要求独立的批次集成测试环节，
-  // 直接以「最终」判据为准（test-engineer 以 --scope=final 语义运行一次）；R14 接口测试
-  // 报告章节仅约束「开发窗口批次集成测试阶段」，故 hotfix 折叠通道不并入该判据。
+  // 直接以「最终」判据为准（test-engineer 以 --scope=final 语义运行一次）；R14/R17
+  // 机读判据仅约束「开发窗口批次集成测试阶段」，故 hotfix 折叠通道不并入该判据。
   const batchTestComplete = isHotfix
     ? true
-    : batchTestRowComplete && batchE2ePassed && batchApiReportPresent;
+    : batchTestRowComplete && batchE2ePassed && batchApiReportPresent && batchStorageReconPresent;
   const finalTestComplete = isDocsOnly ? true : finalTestRowComplete && finalE2ePassed;
 
   const finalTestRequired = isDocsOnly
@@ -1317,6 +1598,8 @@ export function parseWorkflowState(content) {
     finalE2ePassed,
     apiTestExempt,
     batchApiReportPresent,
+    storageReconciliationExempt,
+    batchStorageReconPresent,
     lintExempt,
     lintPassed,
     staticScanExempt,

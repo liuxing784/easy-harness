@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 门禁逻辑回归自检：覆盖 R3 / R6 / B1 / R9 / R10 / R11 / R13 / R14 / R15 / R16
+ * 门禁逻辑回归自检：覆盖 R3 / R6 / B1 / R9 / R10 / R11 / R13 / R14 / R15 / R16 / R17
  * 最低必测集，以及 Finding #1（出厂模板阻塞误判）回归。
  * 纯 Node，无需额外依赖。通过临时 fixture（写入 test-results/.gate-selftest/ 下的
  * docs 子树 + process.md，借助 HARNESS_PROCESS_PATH 环境变量切换活跃流程指针）
@@ -18,6 +18,11 @@ import {
   checkHotfixDesign,
   isCancelledProcessFile,
   checkRoleDispatchGate,
+  checkBatchApiTestReport,
+  isApiTestExempt,
+  checkBatchStorageReconciliationReport,
+  isStorageReconciliationExempt,
+  isE2eExempt,
   hasUnresolvedIssues,
   isProcessBlocked,
   readLintResult,
@@ -412,6 +417,573 @@ test('R13: 设计审核通过 + 有效分派计划时允许发起 development-en
   const result = checkRoleDispatchGate('development-engineer');
   assert.equal(result.ok, true);
 });
+
+console.log('== R14：开发窗口批次接口测试报告章节校验 ==');
+const R14_PROGRESS_BATCH_DONE = [
+  '---',
+  'workflow_mode: full',
+  'iterationType: greenfield',
+  '---',
+  '',
+  '## 进度列表',
+  '',
+  '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+  '| ----------- | -------- | ---- | ---- |',
+  '| 开发工程师 | T0-1 | 执行完成 | |',
+  '| 质量保障工程师 | T0-1 | 执行完成 | |',
+  '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+  '',
+].join('\n');
+const API_REPORT_EMPTY =
+  '# 测试报告\n\n## 接口测试报告\n\n| 接口 | 是否通过 |\n| ---- | -------- |\n';
+const API_REPORT_FILLED =
+  '# 测试报告\n\n## 接口测试报告\n\n| 接口 | 是否通过 |\n| ---- | -------- |\n| /api/todos POST | 是 |\n';
+
+test('R14: 测试报告缺少接口测试报告章节时校验失败', () => {
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, {
+    'docs/test/test-report.md': '# 测试报告\n\n## 测试环境\n\n无\n',
+  });
+  assert.equal(checkBatchApiTestReport().ok, false);
+});
+test('R14: 接口测试报告章节存在但为空（仅表头）时校验失败', () => {
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, {
+    'docs/test/test-report.md': API_REPORT_EMPTY,
+  });
+  assert.equal(checkBatchApiTestReport().ok, false);
+});
+test('R14: 接口测试报告章节含真实数据行时校验通过', () => {
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, {
+    'docs/test/test-report.md': API_REPORT_FILLED,
+  });
+  assert.equal(checkBatchApiTestReport().ok, true);
+});
+test('R14: parseWorkflowState 反映 batchApiReportPresent', () => {
+  const content = fixtureProcess(R14_PROGRESS_BATCH_DONE, {
+    'docs/test/test-report.md': API_REPORT_FILLED,
+  });
+  assert.equal(parseWorkflowState(content).batchApiReportPresent, true);
+});
+test('R14: 缺接口测试报告章节时 batchTestComplete=false（即便测试记录完成）', () => {
+  const content = fixtureProcess(R14_PROGRESS_BATCH_DONE, {
+    'docs/test/test-report.md': API_REPORT_EMPTY,
+  });
+  const state = parseWorkflowState(content);
+  assert.equal(state.batchTestRowComplete, true, '批次测试进度行应为完成');
+  assert.equal(state.batchApiReportPresent, false);
+  assert.equal(state.batchTestComplete, false, '接口测试报告缺失应使批次测试判定为未完成');
+});
+console.log('== R14：无对外接口项目适用性豁免（双要素）==');
+const API_EXEMPT_CONFIRM_PROCESS = [
+  '---',
+  'workflow_mode: full',
+  'iterationType: greenfield',
+  '---',
+  '',
+  '## 用户确认记录',
+  '',
+  '| 确认项 | 时间 | 用户原话摘要 |',
+  '| ------ | ---- | ------------ |',
+  '| 接口测试豁免 | 2026-01-01 | 纯算法库无对外接口，确认豁免接口测试 |',
+  '',
+  '## 进度列表',
+  '',
+  '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+  '| ----------- | -------- | ---- | ---- |',
+  '| 开发工程师 | T0-1 | 执行完成 | |',
+  '',
+].join('\n');
+const API_NA_GATED = '{ "apiTestApplicability": "n/a", "apiTestApplicabilityReason": "纯算法库无对外接口" }\n';
+
+test('R14: 仅用户确认但架构师未声明 n/a → 不豁免', () => {
+  const content = fixtureProcess(API_EXEMPT_CONFIRM_PROCESS, {
+    'docs/design/none.json': '{}\n',
+  });
+  process.env.HARNESS_GATED_ARTIFACTS_PATH = 'test-results/.gate-selftest/docs/design/none.json';
+  assert.equal(isApiTestExempt(content), false);
+});
+test('R14: 仅架构师声明 n/a 但无用户确认 → 不豁免', () => {
+  const content = fixtureProcess(
+    ['---', 'workflow_mode: full', 'iterationType: greenfield', '---', ''].join('\n'),
+    { 'docs/design/gated-na.json': API_NA_GATED },
+  );
+  process.env.HARNESS_GATED_ARTIFACTS_PATH = 'test-results/.gate-selftest/docs/design/gated-na.json';
+  assert.equal(isApiTestExempt(content), false);
+});
+test('R14: 架构师声明 n/a + 用户确认 → 豁免，batchApiReportPresent 视为满足', () => {
+  const content = fixtureProcess(API_EXEMPT_CONFIRM_PROCESS, {
+    'docs/design/gated-na.json': API_NA_GATED,
+  });
+  process.env.HARNESS_GATED_ARTIFACTS_PATH = 'test-results/.gate-selftest/docs/design/gated-na.json';
+  assert.equal(isApiTestExempt(content), true);
+  const state = parseWorkflowState(content);
+  assert.equal(state.apiTestExempt, true);
+  assert.equal(state.batchApiReportPresent, true, '豁免后即便无接口测试报告章节也视为满足');
+});
+delete process.env.HARNESS_GATED_ARTIFACTS_PATH;
+
+test('R14: hotfix 折叠通道不并入接口测试报告判据（batchTestComplete 恒真）', () => {
+  const content = fixtureProcess(
+    [
+      '---',
+      'workflow_mode: hotfix',
+      'iterationType: hotfix',
+      '---',
+      '',
+      '## 进度列表',
+      '',
+      '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+      '| ----------- | -------- | ---- | ---- |',
+      '| 开发工程师 | T-1 | 执行完成 | |',
+      '| 质量保障工程师 | T-1 | 执行完成 | |',
+      '',
+    ].join('\n'),
+  );
+  assert.equal(parseWorkflowState(content).batchTestComplete, true);
+});
+
+console.log('== R17：业务数据存储对账机读判据 ==');
+const STORAGE_RECON_HEADER =
+  '| 场景类型 | 关联需求 | 关联任务包 | 存储介质 | 对账方式 | 预期存储结果 | 实际存储结果 | 是否通过 | 备注 |';
+const STORAGE_RECON_SEP =
+  '| -------- | -------- | ---------- | -------- | -------- | ------------ | ------------ | -------- | ---- |';
+const STORAGE_RECON_BOTH = [
+  '# 测试报告',
+  '',
+  '## 存储对账记录',
+  '',
+  STORAGE_RECON_HEADER,
+  STORAGE_RECON_SEP,
+  '| 接口 | R-001 | T0-1 | 数据库 | SELECT id FROM todos | 有行 | 有行 | 是 | |',
+  '| E2E | R-001 | T0-1 | 缓存 | Redis GET todo:1 | 有值 | 有值 | 是 | |',
+  '',
+].join('\n');
+const STORAGE_RECON_API_ONLY = [
+  '# 测试报告',
+  '',
+  '## 存储对账记录',
+  '',
+  STORAGE_RECON_HEADER,
+  STORAGE_RECON_SEP,
+  '| 接口 | R-001 | T0-1 | 文件 | 读 /data/out.json | 存在 | 存在 | 是 | |',
+  '',
+].join('\n');
+const STORAGE_RECON_E2E_ONLY = [
+  '# 测试报告',
+  '',
+  '## 存储对账记录',
+  '',
+  STORAGE_RECON_HEADER,
+  STORAGE_RECON_SEP,
+  '| E2E | R-001 | T0-1 | 对象存储 | S3 headObject | 存在 | 存在 | 是 | |',
+  '',
+].join('\n');
+const STORAGE_RECON_BAD_MEDIUM = [
+  '# 测试报告',
+  '',
+  '## 存储对账记录',
+  '',
+  STORAGE_RECON_HEADER,
+  STORAGE_RECON_SEP,
+  '| 接口 | R-001 | T0-1 | PostgreSQL | SELECT 1 | 有行 | 有行 | 是 | |',
+  '| E2E | R-001 | T0-1 | 内存变量 | 看变量 | 有值 | 有值 | 是 | |',
+  '',
+].join('\n');
+const STORAGE_RECON_EMPTY = [
+  '# 测试报告',
+  '',
+  '## 存储对账记录',
+  '',
+  STORAGE_RECON_HEADER,
+  STORAGE_RECON_SEP,
+  '',
+].join('\n');
+
+test('R17: 缺少存储对账记录章节时校验失败', () => {
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, {
+    'docs/test/test-report.md': '# 测试报告\n\n## 接口测试报告\n\n| 接口 | 是否通过 |\n| ---- | -------- |\n| /a | 是 |\n',
+  });
+  assert.equal(checkBatchStorageReconciliationReport().ok, false);
+});
+test('R17: 存储对账章节为空（仅表头）时校验失败', () => {
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, {
+    'docs/test/test-report.md': STORAGE_RECON_EMPTY,
+  });
+  assert.equal(checkBatchStorageReconciliationReport().ok, false);
+});
+test('R17: 缺 E2E 场景类型行时校验失败（未豁免 E2E）', () => {
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, {
+    'docs/test/test-report.md': STORAGE_RECON_API_ONLY,
+  });
+  const r = checkBatchStorageReconciliationReport();
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'missing-e2e-scene-row');
+});
+test('R17: 缺接口场景类型行时校验失败（未豁免 R14）', () => {
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, {
+    'docs/test/test-report.md': STORAGE_RECON_E2E_ONLY,
+  });
+  const r = checkBatchStorageReconciliationReport();
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'missing-api-scene-row');
+});
+test('R17: 存储介质列无合法关键词时校验失败', () => {
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, {
+    'docs/test/test-report.md': STORAGE_RECON_BAD_MEDIUM,
+  });
+  const r = checkBatchStorageReconciliationReport();
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'invalid-storage-medium');
+});
+test('R17: 接口+E2E 行且介质合法（数据库/缓存）时校验通过', () => {
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, {
+    'docs/test/test-report.md': STORAGE_RECON_BOTH,
+  });
+  assert.equal(checkBatchStorageReconciliationReport().ok, true);
+});
+test('R17: 文件与对象存储介质关键词可识别', () => {
+  const mixed = [
+    '# 测试报告',
+    '',
+    '## 存储对账记录',
+    '',
+    STORAGE_RECON_HEADER,
+    STORAGE_RECON_SEP,
+    '| 接口 | R-001 | T0-1 | filesystem | 读盘 | 存在 | 存在 | 是 | |',
+    '| E2E | R-001 | T0-1 | s3 | head | 存在 | 存在 | 是 | |',
+    '',
+  ].join('\n');
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, { 'docs/test/test-report.md': mixed });
+  assert.equal(checkBatchStorageReconciliationReport().ok, true);
+});
+test('R17: 「其他」介质缺备注时校验失败', () => {
+  const otherNoNote = [
+    '# 测试报告',
+    '',
+    '## 存储对账记录',
+    '',
+    STORAGE_RECON_HEADER,
+    STORAGE_RECON_SEP,
+    '| 接口 | R-001 | T0-1 | 其他 | 查外部系统 | 有记录 | 有记录 | 是 | |',
+    '| E2E | R-001 | T0-1 | 数据库 | SELECT 1 | 有行 | 有行 | 是 | |',
+    '',
+  ].join('\n');
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, { 'docs/test/test-report.md': otherNoNote });
+  const r = checkBatchStorageReconciliationReport();
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'other-medium-requires-note');
+});
+test('R17: 「其他」介质含非空备注时校验通过', () => {
+  const otherWithNote = [
+    '# 测试报告',
+    '',
+    '## 存储对账记录',
+    '',
+    STORAGE_RECON_HEADER,
+    STORAGE_RECON_SEP,
+    '| 接口 | R-001 | T0-1 | 其他 | 查外部系统 | 有记录 | 有记录 | 是 | 业务落盘至自建消息队列 MQ-X |',
+    '| E2E | R-001 | T0-1 | 数据库 | SELECT 1 | 有行 | 有行 | 是 | |',
+    '',
+  ].join('\n');
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, { 'docs/test/test-report.md': otherWithNote });
+  assert.equal(checkBatchStorageReconciliationReport().ok, true);
+});
+test('R17: 描述列（对账方式/预期/实际/是否通过）为空时校验失败', () => {
+  const missingDesc = [
+    '# 测试报告',
+    '',
+    '## 存储对账记录',
+    '',
+    STORAGE_RECON_HEADER,
+    STORAGE_RECON_SEP,
+    '| 接口 | R-001 | T0-1 | 数据库 | | 有行 | 有行 | 是 | |',
+    '| E2E | R-001 | T0-1 | 缓存 | Redis GET | 有值 | 有值 | 是 | |',
+    '',
+  ].join('\n');
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, { 'docs/test/test-report.md': missingDesc });
+  const r = checkBatchStorageReconciliationReport();
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'missing-recon-method');
+});
+test('R17: 关联任务包为空时校验失败', () => {
+  const missingTask = [
+    '# 测试报告',
+    '',
+    '## 存储对账记录',
+    '',
+    STORAGE_RECON_HEADER,
+    STORAGE_RECON_SEP,
+    '| 接口 | R-001 | | 数据库 | SELECT 1 | 有行 | 有行 | 是 | |',
+    '| E2E | R-001 | T0-1 | 缓存 | Redis GET | 有值 | 有值 | 是 | |',
+    '',
+  ].join('\n');
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, { 'docs/test/test-report.md': missingTask });
+  const r = checkBatchStorageReconciliationReport();
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'missing-task-package');
+});
+test('R17: 多批次进度任务包须全部被对账行覆盖（仅覆盖首批不够）', () => {
+  const multiBatchProgress = [
+    '---',
+    'workflow_mode: full',
+    'iterationType: greenfield',
+    '---',
+    '',
+    '## 进度列表',
+    '',
+    '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+    '| ----------- | -------- | ---- | ---- |',
+    '| 开发工程师 | T0-1 | 执行完成 | |',
+    '| 质量保障工程师 | T0-1 | 执行完成 | |',
+    '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+    '| 开发工程师 | T0-2 | 执行完成 | |',
+    '| 质量保障工程师 | T0-2 | 执行完成 | |',
+    '| 测试工程师 | 批次集成测试 T0-2 | 执行完成 | |',
+    '',
+  ].join('\n');
+  fixtureProcess(multiBatchProgress, { 'docs/test/test-report.md': STORAGE_RECON_BOTH });
+  const r = checkBatchStorageReconciliationReport();
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /^missing-batch-task-coverage:/);
+  assert.match(r.reason, /T0-2/);
+});
+test('R17: 多批次任务包均有对账行时校验通过', () => {
+  const multiBatchProgress = [
+    '---',
+    'workflow_mode: full',
+    'iterationType: greenfield',
+    '---',
+    '',
+    '## 进度列表',
+    '',
+    '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+    '| ----------- | -------- | ---- | ---- |',
+    '| 开发工程师 | T0-1 | 执行完成 | |',
+    '| 质量保障工程师 | T0-1 | 执行完成 | |',
+    '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+    '| 开发工程师 | T0-2 | 执行完成 | |',
+    '| 质量保障工程师 | T0-2 | 执行完成 | |',
+    '| 测试工程师 | 批次集成测试 T0-2 | 执行完成 | |',
+    '',
+  ].join('\n');
+  const bothBatches = [
+    '# 测试报告',
+    '',
+    '## 存储对账记录',
+    '',
+    STORAGE_RECON_HEADER,
+    STORAGE_RECON_SEP,
+    '| 接口 | R-001 | T0-1 | 数据库 | SELECT | 有行 | 有行 | 是 | |',
+    '| E2E | R-001 | T0-1 | 缓存 | Redis GET | 有值 | 有值 | 是 | |',
+    '| 接口 | R-002 | T0-2 | 数据库 | SELECT | 有行 | 有行 | 是 | |',
+    '| E2E | R-002 | T0-2 | 文件 | 读盘 | 存在 | 存在 | 是 | |',
+    '',
+  ].join('\n');
+  fixtureProcess(multiBatchProgress, { 'docs/test/test-report.md': bothBatches });
+  assert.equal(checkBatchStorageReconciliationReport().ok, true);
+});
+test('R17: 「不适用」介质缺备注时校验失败', () => {
+  const naNoNote = [
+    '# 测试报告',
+    '',
+    '## 存储对账记录',
+    '',
+    STORAGE_RECON_HEADER,
+    STORAGE_RECON_SEP,
+    '| 接口 | R-001 | T0-1 | 数据库 | SELECT 1 | 有行 | 有行 | 是 | |',
+    '| E2E | R-001 | T0-1 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | |',
+    '',
+  ].join('\n');
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, { 'docs/test/test-report.md': naNoNote });
+  const r = checkBatchStorageReconciliationReport();
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'na-medium-requires-note');
+});
+test('R17: 仅有接口/E2E「不适用」行时校验失败（不能代替真实对账）', () => {
+  const onlyNa = [
+    '# 测试报告',
+    '',
+    '## 存储对账记录',
+    '',
+    STORAGE_RECON_HEADER,
+    STORAGE_RECON_SEP,
+    '| 接口 | R-001 | T0-1 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | 本任务包无业务数据写入，不适用对账 |',
+    '| E2E | R-001 | T0-1 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | 本任务包无业务数据写入，不适用对账 |',
+    '',
+  ].join('\n');
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, { 'docs/test/test-report.md': onlyNa });
+  const r = checkBatchStorageReconciliationReport();
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'missing-applicable-recon-row');
+});
+test('R17: 「不适用」行不计入分类型真实对账（仅有不适用接口行 + 适用 E2E 行仍缺接口）', () => {
+  const naApiOnly = [
+    '# 测试报告',
+    '',
+    '## 存储对账记录',
+    '',
+    STORAGE_RECON_HEADER,
+    STORAGE_RECON_SEP,
+    '| 接口 | R-001 | T0-1 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | 本任务包无业务数据写入，不适用对账 |',
+    '| E2E | R-001 | T0-1 | 数据库 | SELECT 1 | 有行 | 有行 | 是 | |',
+    '',
+  ].join('\n');
+  fixtureProcess(R14_PROGRESS_BATCH_DONE, { 'docs/test/test-report.md': naApiOnly });
+  const r = checkBatchStorageReconciliationReport();
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'missing-api-scene-row');
+});
+test('R17: 真实对账行 + 无写入任务包「不适用」留痕时校验通过', () => {
+  const multiBatchProgress = [
+    '---',
+    'workflow_mode: full',
+    'iterationType: greenfield',
+    '---',
+    '',
+    '## 进度列表',
+    '',
+    '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+    '| ----------- | -------- | ---- | ---- |',
+    '| 开发工程师 | T0-1 | 执行完成 | |',
+    '| 质量保障工程师 | T0-1 | 执行完成 | |',
+    '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+    '| 开发工程师 | T0-2 | 执行完成 | |',
+    '| 质量保障工程师 | T0-2 | 执行完成 | |',
+    '| 测试工程师 | 批次集成测试 T0-2 | 执行完成 | |',
+    '',
+  ].join('\n');
+  const mixed = [
+    '# 测试报告',
+    '',
+    '## 存储对账记录',
+    '',
+    STORAGE_RECON_HEADER,
+    STORAGE_RECON_SEP,
+    '| 接口 | R-001 | T0-1 | 数据库 | SELECT | 有行 | 有行 | 是 | |',
+    '| E2E | R-001 | T0-1 | 缓存 | Redis GET | 有值 | 有值 | 是 | |',
+    '| 接口 | R-002 | T0-2 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | 本任务包无业务数据写入，不适用对账 |',
+    '',
+  ].join('\n');
+  fixtureProcess(multiBatchProgress, { 'docs/test/test-report.md': mixed });
+  assert.equal(checkBatchStorageReconciliationReport().ok, true);
+});
+test('R17: 缺存储对账时 batchTestComplete=false', () => {
+  const content = fixtureProcess(R14_PROGRESS_BATCH_DONE, {
+    'docs/test/test-report.md': API_REPORT_FILLED,
+  });
+  const state = parseWorkflowState(content);
+  assert.equal(state.batchApiReportPresent, true);
+  assert.equal(state.batchStorageReconPresent, false);
+  assert.equal(state.batchTestComplete, false);
+});
+
+console.log('== R17：无业务数据持久化适用性豁免（双要素）==');
+const STORAGE_EXEMPT_CONFIRM_PROCESS = [
+  '---',
+  'workflow_mode: full',
+  'iterationType: greenfield',
+  '---',
+  '',
+  '## 用户确认记录',
+  '',
+  '| 确认项 | 时间 | 用户原话摘要 |',
+  '| ------ | ---- | ------------ |',
+  '| 存储对账豁免 | 2026-01-01 | 纯算法库无持久化，确认豁免存储对账 |',
+  '',
+  '## 进度列表',
+  '',
+  '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+  '| ----------- | -------- | ---- | ---- |',
+  '| 开发工程师 | T0-1 | 执行完成 | |',
+  '',
+].join('\n');
+const STORAGE_NA_GATED =
+  '{ "storageReconciliationApplicability": "n/a", "storageReconciliationApplicabilityReason": "无业务数据持久化" }\n';
+
+test('R17: 仅用户确认但架构师未声明 n/a → 不豁免', () => {
+  const content = fixtureProcess(STORAGE_EXEMPT_CONFIRM_PROCESS, {
+    'docs/design/none.json': '{}\n',
+  });
+  process.env.HARNESS_GATED_ARTIFACTS_PATH = 'test-results/.gate-selftest/docs/design/none.json';
+  assert.equal(isStorageReconciliationExempt(content), false);
+});
+test('R17: 仅架构师声明 n/a 但无用户确认 → 不豁免', () => {
+  const content = fixtureProcess(
+    ['---', 'workflow_mode: full', 'iterationType: greenfield', '---', ''].join('\n'),
+    { 'docs/design/gated-storage-na.json': STORAGE_NA_GATED },
+  );
+  process.env.HARNESS_GATED_ARTIFACTS_PATH =
+    'test-results/.gate-selftest/docs/design/gated-storage-na.json';
+  assert.equal(isStorageReconciliationExempt(content), false);
+});
+test('R17: 架构师声明 n/a + 用户确认 → 豁免，batchStorageReconPresent 视为满足', () => {
+  const content = fixtureProcess(STORAGE_EXEMPT_CONFIRM_PROCESS, {
+    'docs/design/gated-storage-na.json': STORAGE_NA_GATED,
+  });
+  process.env.HARNESS_GATED_ARTIFACTS_PATH =
+    'test-results/.gate-selftest/docs/design/gated-storage-na.json';
+  assert.equal(isStorageReconciliationExempt(content), true);
+  const state = parseWorkflowState(content);
+  assert.equal(state.storageReconciliationExempt, true);
+  assert.equal(state.batchStorageReconPresent, true);
+});
+test('R17: API 豁免后仅需 E2E 对账行即可通过机读', () => {
+  const content = fixtureProcess(API_EXEMPT_CONFIRM_PROCESS, {
+    'docs/design/gated-na.json': API_NA_GATED,
+    'docs/test/test-report.md': STORAGE_RECON_E2E_ONLY,
+  });
+  process.env.HARNESS_GATED_ARTIFACTS_PATH = 'test-results/.gate-selftest/docs/design/gated-na.json';
+  assert.equal(isApiTestExempt(content), true);
+  assert.equal(checkBatchStorageReconciliationReport(content).ok, true);
+});
+test('R17: E2E 豁免后仅需接口对账行即可通过机读', () => {
+  const e2eExemptProcess = [
+    '---',
+    'workflow_mode: full',
+    'iterationType: greenfield',
+    '---',
+    '',
+    '## 用户确认记录',
+    '',
+    '| 确认项 | 时间 | 用户原话摘要 |',
+    '| ------ | ---- | ------------ |',
+    '| E2E豁免 | 2026-01-01 | 纯后端无 UI，确认豁免 E2E |',
+    '',
+    '## 进度列表',
+    '',
+    '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+    '| ----------- | -------- | ---- | ---- |',
+    '| 开发工程师 | T0-1 | 执行完成 | |',
+    '',
+  ].join('\n');
+  const e2eNaGated = '{ "e2eApplicability": "n/a", "e2eApplicabilityReason": "无 UI" }\n';
+  const content = fixtureProcess(e2eExemptProcess, {
+    'docs/design/gated-e2e-na.json': e2eNaGated,
+    'docs/test/test-report.md': STORAGE_RECON_API_ONLY,
+  });
+  process.env.HARNESS_GATED_ARTIFACTS_PATH =
+    'test-results/.gate-selftest/docs/design/gated-e2e-na.json';
+  assert.equal(isE2eExempt(content), true);
+  assert.equal(checkBatchStorageReconciliationReport(content).ok, true);
+});
+test('R17: hotfix 折叠通道不并入存储对账判据（batchTestComplete 恒真）', () => {
+  const content = fixtureProcess(
+    [
+      '---',
+      'workflow_mode: hotfix',
+      'iterationType: hotfix',
+      '---',
+      '',
+      '## 进度列表',
+      '',
+      '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+      '| ----------- | -------- | ---- | ---- |',
+      '| 开发工程师 | T-1 | 执行完成 | |',
+      '',
+    ].join('\n'),
+  );
+  assert.equal(parseWorkflowState(content).batchTestComplete, true);
+});
+delete process.env.HARNESS_GATED_ARTIFACTS_PATH;
 
 console.log('== R15：编程规范 lint 门禁 ==');
 test('R15: 无 lint 机读产物时 readLintResult 返回 null', () => {

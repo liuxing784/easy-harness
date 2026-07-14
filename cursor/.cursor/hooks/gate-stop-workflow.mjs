@@ -119,9 +119,14 @@ async function main() {
             '【流程门禁】（R14）本批次集成测试记录与批次 E2E 均已完成，但测试报告缺少非空的「## 接口测试报告」章节。开发窗口批次集成测试阶段必须做接口测试：请由 test-engineer 补做接口测试并在测试报告补全「## 接口测试报告」章节（须含实际用例数据行）后再推进。若本项目确无对外接口，须由 system-architect 在 gated-artifacts.json 声明 apiTestApplicability:"n/a" 且项目经理在 process.md「## 用户确认记录」补一行接口测试豁免确认，方可豁免本判据。',
           );
         }
+        if (state.batchTestRowComplete && state.batchE2ePassed && !state.batchStorageReconPresent) {
+          exitFollowup(
+            '【流程门禁】（R17）本批次集成测试记录与批次 E2E 均已完成，但存储对账机读判据未满足。请由 test-engineer 在测试报告补全非空「## 存储对账记录」：须含适用分类型行（未豁免 R14 须含接口+非「不适用」介质行；未豁免 E2E 须含 E2E+非「不适用」介质行；至少一条真实对账适用行）；每行「关联任务包/对账方式/预期存储结果/实际存储结果/是否通过」非空；「存储介质」为数据库/文件/缓存/对象存储/其他/不适用（「其他」须备注具体系统；「不适用」仅用于无写入任务包留痕且须备注理由，不计入分类型真实对账）；且进度列表中已完成批次测试的任务包编号须全部出现在对账「关联任务包」列（见 AGENTS.md §8.3）。若本项目确无业务数据持久化，须由 system-architect 在 gated-artifacts.json 声明 storageReconciliationApplicability:"n/a" 且项目经理在 process.md「## 用户确认记录」补一行存储对账豁免确认，方可豁免本判据。',
+          );
+        }
         if (!state.batchTestComplete) {
           exitFollowup(
-            '【流程门禁】本批次 QA 已通过，但测试工程师尚未执行批次集成测试（含批次 E2E）。请先调用 project-manager 分派 test-engineer 做批次集成测试。',
+            '【流程门禁】本批次 QA 已通过，但测试工程师尚未执行批次集成测试（含批次 E2E、接口测试报告与存储对账）。请先调用 project-manager 分派 test-engineer 做批次集成测试。',
           );
         }
         if (state.finalTestRequired) {

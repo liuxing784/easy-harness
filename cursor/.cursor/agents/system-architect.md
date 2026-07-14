@@ -58,7 +58,7 @@ model: claude-opus-4-8
 3. 仅当 monorepo、自定义 npm script 名、或多 manifest 导致自动探测不准时，在 `harness.config.json` → `qa.commands.lint` 写覆盖值，并在 §5 表格同步改写；
 4. 所选栈**无框架默认 lint**（Java/PHP/.NET 等）且无法声明等价命令时，走下方 `lintApplicability: "n/a"` 双要素豁免，并在 §5 说明豁免理由。
 
-若某项机械门禁确不适用/无法运行（E2E 无 UI、R14 无对外接口、R15 无可用 linter、R16 重复代码检测或安全扫描无法运行），须走 `AGENTS.md` §8.2「双要素豁免机制」（唯一权威定义）：**你**负责第一要素——在 `gated-artifacts.json` 中声明对应字段；第二要素（`process.md` 用户确认）由你提示项目经理补齐，两项皆满足门禁才生效，**只声明一项不生效**。按需在 `gated-artifacts.json` 中添加：
+若某项机械门禁确不适用/无法运行（E2E 无 UI、R14 无对外接口、R17 无业务数据持久化、R15 无可用 linter、R16 重复代码检测或安全扫描无法运行），须走 `AGENTS.md` §8.2「双要素豁免机制」（唯一权威定义）：**你**负责第一要素——在 `gated-artifacts.json` 中声明对应字段；第二要素（`process.md` 用户确认）由你提示项目经理补齐，两项皆满足门禁才生效，**只声明一项不生效**。按需在 `gated-artifacts.json` 中添加：
 
 ```json
 {
@@ -66,6 +66,8 @@ model: claude-opus-4-8
   "e2eApplicabilityReason": "简要说明为何不适用浏览器 E2E",
   "apiTestApplicability": "n/a",
   "apiTestApplicabilityReason": "简要说明为何无对外接口 / 不适用接口测试",
+  "storageReconciliationApplicability": "n/a",
+  "storageReconciliationApplicabilityReason": "简要说明为何无业务数据持久化（无数据库/文件/缓存/对象存储等写入）",
   "lintApplicability": "n/a",
   "lintApplicabilityReason": "简要说明为何无可用 linter / 不适用 lint 门禁",
   "dupCheckApplicability": "n/a",
@@ -75,7 +77,7 @@ model: claude-opus-4-8
 }
 ```
 
-> 仅声明**实际不适用**的字段，其余不适用豁免的字段不得写入（否则视为无理由弱化门禁，R12）。字段对应的确认关键词、判定函数见 `AGENTS.md` §8.2「双要素豁免机制」表；重复代码与安全扫描须**分别独立**声明，互不代替。
+> 仅声明**实际不适用**的字段，其余不适用豁免的字段不得写入（否则视为无理由弱化门禁，R12）。字段对应的确认关键词、判定函数见 `AGENTS.md` §8.2「双要素豁免机制」表；重复代码与安全扫描须**分别独立**声明，互不代替。`detail-design-spec.md` §4 须声明业务数据存储介质（R17 输入）。
 
 ### `hotfix` 最小热修设计微任务（R9）
 

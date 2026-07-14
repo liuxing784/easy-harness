@@ -14,7 +14,7 @@
  *     HARNESS_GATED_ARTIFACTS_PATH 指向），不依赖、不改动宿主项目的 `docs/` 成果物。
  *
  * 覆盖场景矩阵：Greenfield(full) / Feature(full) / Hotfix(R11 折叠) / R15 编程规范 lint 门禁 /
- * R16 静态代码质量门禁（重复代码+安全扫描）/ 对抗健壮性 / Finding #1（出厂模板阻塞误判）端到端回归。
+ * R16 静态代码质量门禁（重复代码+安全扫描）/ R17 业务数据存储对账 / 对抗健壮性 / Finding #1（出厂模板阻塞误判）端到端回归。
  *
  * 用法：
  *   node .cursor/scripts/gate-scenarios.mjs           # 运行全部场景
@@ -98,7 +98,7 @@ const DPL_CLEAN =
 const DPL_UNRESOLVED =
   '# 设计问题清单\n\n| 检查维度 | 问题描述 | 严重等级 | 是否存在 | 是否解决 | 关联成果物 |\n| --- | --- | --- | --- | --- | --- |\n| 功能 | 边界未定义 | 高 | 是 | 否 | detail-design-spec.md |\n';
 const GATED_EMPTY = '{}\n';
-// R14：含非空「## 接口测试报告」章节的批次测试报告
+// R14 + R17：含非空「## 接口测试报告」与「## 存储对账记录」（接口+E2E 行，合法介质）
 const TEST_REPORT_API = [
   '# 测试报告',
   '',
@@ -107,6 +107,35 @@ const TEST_REPORT_API = [
   '| 接口 | 请求方法 | 关联需求 | 关联任务包 | 是否通过 |',
   '| ---- | -------- | -------- | ---------- | -------- |',
   '| /api/todos | POST | R-001 | T0-1 | 是 |',
+  '',
+  '## 存储对账记录',
+  '',
+  '| 场景类型 | 关联需求 | 关联任务包 | 存储介质 | 对账方式 | 预期存储结果 | 实际存储结果 | 是否通过 | 备注 |',
+  '| -------- | -------- | ---------- | -------- | -------- | ------------ | ------------ | -------- | ---- |',
+  '| 接口 | R-001 | T0-1 | 数据库 | SELECT id FROM todos | 有行 | 有行 | 是 | |',
+  '| E2E | R-001 | T0-1 | 缓存 | Redis GET todo:1 | 有值 | 有值 | 是 | |',
+  '',
+].join('\n');
+// R14 有接口报告但缺 R17 存储对账（用于 G10c）
+const TEST_REPORT_API_NO_STORAGE = [
+  '# 测试报告',
+  '',
+  '## 接口测试报告',
+  '',
+  '| 接口 | 请求方法 | 关联需求 | 关联任务包 | 是否通过 |',
+  '| ---- | -------- | -------- | ---------- | -------- |',
+  '| /api/todos | POST | R-001 | T0-1 | 是 |',
+  '',
+].join('\n');
+// R14 豁免后仅需 E2E 对账行（G11c）
+const TEST_REPORT_STORAGE_E2E_ONLY = [
+  '# 测试报告',
+  '',
+  '## 存储对账记录',
+  '',
+  '| 场景类型 | 关联需求 | 关联任务包 | 存储介质 | 对账方式 | 预期存储结果 | 实际存储结果 | 是否通过 | 备注 |',
+  '| -------- | -------- | ---------- | -------- | -------- | ------------ | ------------ | -------- | ---- |',
+  '| E2E | R-001 | T0-1 | 文件 | 读盘校验落盘文件 | 文件存在 | 文件存在 | 是 | |',
   '',
 ].join('\n');
 
@@ -687,6 +716,27 @@ function greenfieldScenarios() {
     hook: 'stop', processPath: relToProject(path.join(stopBatchNoApi, 'docs/process/process.md')),
   });
 
+  const stopBatchNoStorage = writeFixture('gf-stop-batch-nostorage', {
+    'docs/process/process.md': greenfieldReady([
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+    ]),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+    'docs/test/test-report.md': TEST_REPORT_API_NO_STORAGE,
+  });
+  writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
+  clearE2e('final');
+  writeLintPass();
+  writeStaticScanPass();
+  check('G10c R17：批次 E2E+接口报告齐但缺存储对账记录', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopBatchNoStorage, 'docs/process/process.md')),
+  });
+
   const stopFinal = writeFixture('gf-stop-final', {
     'docs/process/process.md': greenfieldReady([
       '| 开发工程师 | T0-1 | 执行完成 | |',
@@ -747,6 +797,7 @@ function greenfieldScenarios() {
     'docs/design/develop-task-list.md': TASK_LIST,
     'docs/design/design-problem-list.md': DPL_CLEAN,
     'docs/design/gated-artifacts.json': API_NA_GATED,
+    'docs/test/test-report.md': TEST_REPORT_STORAGE_E2E_ONLY,
   });
   writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
   writeE2e('final', { requiredIds: ['R-001'], passed: ['R-001'] });
@@ -756,6 +807,90 @@ function greenfieldScenarios() {
     hook: 'stop',
     processPath: relToProject(path.join(stopApiExempt, 'docs/process/process.md')),
     gatedPath: relToProject(path.join(stopApiExempt, 'docs/design/gated-artifacts.json')),
+  });
+
+  const STORAGE_EXEMPT_CONFIRM = [
+    '## 用户确认记录',
+    '',
+    '| 确认项 | 时间 | 用户原话摘要 |',
+    '| ------ | ---- | ------------ |',
+    '| 需求摘要 | 2026-01-01 | 已确认 |',
+    '| 存储对账豁免 | 2026-01-01 | 无业务数据持久化，确认豁免存储对账 |',
+  ].join('\n');
+  const STORAGE_NA_GATED =
+    '{\n  "storageReconciliationApplicability": "n/a",\n  "storageReconciliationApplicabilityReason": "无业务数据持久化"\n}\n';
+  function greenfieldStorageExempt(progressRows = []) {
+    return [
+      '---',
+      'phase: development',
+      'workflow_mode: full',
+      'iterationType: greenfield',
+      'blocking: false',
+      'cancelled: false',
+      '---',
+      '',
+      '# 流程进度记录',
+      '',
+      ARTIFACT_REF,
+      '',
+      STORAGE_EXEMPT_CONFIRM,
+      '',
+      DISPATCH_SECTION,
+      '',
+      progressSection(progressRows),
+      '',
+      BLOCK_OK,
+      '',
+    ].join('\n');
+  }
+
+  const stopStorageNaOnly = writeFixture('gf-stop-storagena-only', {
+    'docs/process/process.md': greenfieldReady([
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+    ]),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+    'docs/design/gated-artifacts.json': STORAGE_NA_GATED,
+    'docs/test/test-report.md': TEST_REPORT_API_NO_STORAGE,
+  });
+  writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
+  clearE2e('final');
+  writeLintPass();
+  writeStaticScanPass();
+  check('G11d R17：仅声明 storageReconciliationApplicability n/a 但无用户确认 → 不豁免', 'followup', {
+    hook: 'stop',
+    processPath: relToProject(path.join(stopStorageNaOnly, 'docs/process/process.md')),
+    gatedPath: relToProject(path.join(stopStorageNaOnly, 'docs/design/gated-artifacts.json')),
+  });
+
+  const stopStorageExempt = writeFixture('gf-stop-storageexempt', {
+    'docs/process/process.md': greenfieldStorageExempt([
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
+      '| 测试工程师 | 最终整体集成测试 | 执行完成 | |',
+    ]),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+    'docs/design/gated-artifacts.json': STORAGE_NA_GATED,
+    'docs/test/test-report.md': TEST_REPORT_API_NO_STORAGE,
+  });
+  writeE2e('batch', { requiredIds: ['R-001'], passed: ['R-001'] });
+  writeE2e('final', { requiredIds: ['R-001'], passed: ['R-001'] });
+  writeLintPass();
+  writeStaticScanPass();
+  check('G11e R17：无持久化声明豁免 + 用户确认后无存储对账记录也可收尾', 'allow-stop', {
+    hook: 'stop',
+    processPath: relToProject(path.join(stopStorageExempt, 'docs/process/process.md')),
+    gatedPath: relToProject(path.join(stopStorageExempt, 'docs/design/gated-artifacts.json')),
   });
   clearE2e('batch');
   clearE2e('final');
