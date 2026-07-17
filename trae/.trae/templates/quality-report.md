@@ -27,7 +27,7 @@
 | 命令 | 退出码 | gatePassed | 结果摘要 | 未执行原因 |
 | ---- | ------ | ---------- | -------- | ---------- |
 
-> R15：`gatePassed=true` 须与 `test-results/qa/.lint-result.json` 一致；由 `node .trae/scripts/lint-run.mjs` 产出。确无可用 linter 时须在「未执行原因」说明双要素豁免已满足。
+> R15：`gatePassed=true` 须与 `test-results/qe/.lint-result.json` 一致；由 `node .trae/scripts/lint-run.mjs` 产出。确无可用 linter 时须在「未执行原因」说明双要素豁免已满足。
 
 ## 静态代码质量执行记录（R16：重复代码 + 安全扫描）
 
@@ -36,7 +36,7 @@
 | 重复代码（DRY） | | | | | |
 | 安全扫描（密钥泄露） | | | | | |
 
-> R16：两项 `gatePassed` 须与 `test-results/qa/.static-scan-result.json` 中 `duplication.gatePassed` / `security.gatePassed` 一致；由 `node .trae/scripts/static-scan-run.mjs` 产出。确无法运行时须在「未执行原因」分别说明对应双要素豁免已满足（重复代码与安全扫描独立豁免，不可互相代替）。
+> R16：两项 `gatePassed` 须与 `test-results/qe/.static-scan-result.json` 中 `duplication.gatePassed` / `security.gatePassed` 一致；由 `node .trae/scripts/static-scan-run.mjs` 产出。确无法运行时须在「未执行原因」分别说明对应双要素豁免已满足（重复代码与安全扫描独立豁免，不可互相代替）。
 
 ## 单元测试执行记录
 

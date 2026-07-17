@@ -6,10 +6,10 @@
  * 用法：
  *   node .cursor/scripts/static-scan-run.mjs   # 依次运行重复代码检测与安全静态扫描
  *
- * 命令解析优先级：harness.config.json → qa.commands.dupCheck / qa.commands.securityScan
+ * 命令解析优先级：harness.config.json → qe.commands.dupCheck / qe.commands.securityScan
  * 覆盖 > 通用默认值（jscpd-rs / gitleaks-secret-scanner，经 npx 获取）。两项工具跨技术栈
  * 通用，不需要像 lint-run.mjs 那样按技术栈探测命令。
- * 产物：test-results/qa/.static-scan-result.json（gatePassed 字段），由 workflow-gate-lib.mjs
+ * 产物：test-results/qe/.static-scan-result.json（gatePassed 字段），由 workflow-gate-lib.mjs
  * 的 readStaticScanResult() 读取，供 gate-stop-workflow / gate-role-sequence 机械判定。
  * gatePassed = duplication.gatePassed && security.gatePassed；任一无命令或退出码非 0 即为 false。
  */
@@ -27,14 +27,14 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const HARNESS_CONFIG = path.join(PROJECT_ROOT, '.cursor/harness.config.json');
-const RESULT_DIR = path.join(PROJECT_ROOT, 'test-results/qa');
+const RESULT_DIR = path.join(PROJECT_ROOT, 'test-results/qe');
 const RESULT_FILE = path.join(RESULT_DIR, '.static-scan-result.json');
 
 function loadOverride(key) {
   if (!fs.existsSync(HARNESS_CONFIG)) return undefined;
   try {
     const config = JSON.parse(fs.readFileSync(HARNESS_CONFIG, 'utf8'));
-    const value = config.qa?.commands?.[key];
+    const value = config.qe?.commands?.[key];
     return typeof value === 'string' ? value : undefined;
   } catch {
     return undefined;

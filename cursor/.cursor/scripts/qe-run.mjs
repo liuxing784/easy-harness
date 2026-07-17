@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * 跨技术栈 QA 命令运行器——Windows 退出码不可靠时的留痕手段。
- * 按 harness.config.json → qa.commands 覆盖，或按项目根目录构建清单文件自动探测技术栈，
- * 运行 test/lint/audit 命令，将退出码与结果摘要落盘到 test-results/qa/qa-run-result.json。
+ * 跨技术栈 QE 命令运行器——Windows 退出码不可靠时的留痕手段。
+ * 按 harness.config.json → qe.commands 覆盖，或按项目根目录构建清单文件自动探测技术栈，
+ * 运行 test/lint/audit 命令，将退出码与结果摘要落盘到 test-results/qe/qe-run-result.json。
  *
  * 用法：
- *   node .cursor/scripts/qa-run.mjs                 # 运行 test + lint + audit
- *   node .cursor/scripts/qa-run.mjs --only=test,audit
+ *   node .cursor/scripts/qe-run.mjs                 # 运行 test + lint + audit
+ *   node .cursor/scripts/qe-run.mjs --only=test,audit
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,7 +16,7 @@ import { execSync } from 'node:child_process';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const HARNESS_CONFIG = path.join(PROJECT_ROOT, '.cursor/harness.config.json');
-const RESULT_DIR = path.join(PROJECT_ROOT, 'test-results/qa');
+const RESULT_DIR = path.join(PROJECT_ROOT, 'test-results/qe');
 
 const STACK_DETECTORS = [
   {
@@ -107,7 +107,7 @@ function loadConfigOverrides() {
   if (!fs.existsSync(HARNESS_CONFIG)) return {};
   try {
     const config = JSON.parse(fs.readFileSync(HARNESS_CONFIG, 'utf8'));
-    return config.qa?.commands ?? {};
+    return config.qe?.commands ?? {};
   } catch {
     return {};
   }
@@ -165,7 +165,7 @@ function main() {
 
   fs.mkdirSync(RESULT_DIR, { recursive: true });
   fs.writeFileSync(
-    path.join(RESULT_DIR, 'qa-run-result.json'),
+    path.join(RESULT_DIR, 'qe-run-result.json'),
     `${JSON.stringify(finalResult, null, 2)}\n`,
     'utf8',
   );

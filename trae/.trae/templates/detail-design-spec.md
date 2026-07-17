@@ -42,7 +42,7 @@
 - 复杂逻辑块须有注释；
 - 目录结构须与本文件 §3 一致。
 
-**代码编写通用原则**（跨技术栈通用，由开发工程师落地、质量保障工程师审查）：
+**代码编写通用原则**（跨技术栈通用，由开发工程师落地、质量工程师审查）：
 
 - **单一职责（SRP）**：每个函数/类只做一件事、只因一个原因改动；
 - **DRY**：禁止复制粘贴产生重复逻辑，公共逻辑须抽取复用；
@@ -55,9 +55,9 @@
 
 ### 编程规范 lint 命令（R15，文档留痕）
 
-> **机制说明**：QA 阶段运行 `node .trae/scripts/lint-run.mjs` 时，命令优先级为 **`harness.config.json` → `qa.commands.lint` > 构建清单自动探测 > 下表默认值**（与 Hook 机械判据一致）。系统架构师在阶段 2 须按已确认技术栈将对应 lint 命令**写入 `harness.config.json` → `qa.commands.lint`**（参见下表默认值），并同步在本节「本项目」表格留痕。仅 monorepo、自定义脚本名、或多 manifest 时，须在 config 写入定制命令并与下表保持一致。
+> **机制说明**：QE 阶段运行 `node .trae/scripts/lint-run.mjs` 时，命令由 **`harness.config.json` -> `qe.commands.lint` 覆盖 > 构建清单自动探测 > 下表默认值** 解析（与 Hook 机械判据一致）。本节由系统架构师按已确认技术栈**填入一行**，供 QE/PM 查阅；**不必**为通过门禁而重复写入 config--多数栈留空 `qe.commands.lint` 即可。仅 monorepo、自定义脚本名、或多 manifest 时须在 config 覆盖并在下表同步改写。
 
-**各栈默认 lint 命令**（`lint-run-lib.mjs` → `STACK_LINT_COMMANDS`，与 `qa-run.mjs` 同口径）：
+**各栈默认 lint 命令**（`lint-run-lib.mjs` → `STACK_LINT_COMMANDS`，与 `qe-run.mjs` 同口径）：
 
 | 技术栈（根目录 manifest） | 默认 lint 命令 |
 | ------------------------- | -------------- |
@@ -76,7 +76,7 @@
 
 ### 重复代码检测命令（R16，文档留痕）
 
-> **机制说明**：重复代码检测（DRY）经 `jscpd-rs`（`npx --yes jscpd-rs --threshold 5 --exitCode 1 ...`）实现，**跨技术栈通用、无需按栈适配**（本框架已强制要求 `Node.js >= 18`，`npx` 在任意技术栈项目中均可用）。默认阈值 5%，**多数项目不必修改** `harness.config.json`；仅当阈值需调整或忽略目录不同于默认（`node_modules`/`dist`/`build`/`vendor`/`target` 等）时，在 `qa.commands.dupCheck` 覆盖完整命令。确无法运行（如离线环境）时，走 `dupCheckApplicability: "n/a"` 双要素豁免。
+> **机制说明**：重复代码检测（DRY）经 `jscpd-rs`（`npx --yes jscpd-rs --threshold 5 --exitCode 1 ...`）实现，**跨技术栈通用、无需按栈适配**（本框架已强制要求 `Node.js >= 18`，`npx` 在任意技术栈项目中均可用）。默认阈值 5%，**多数项目不必修改** `harness.config.json`；仅当阈值需调整或忽略目录不同于默认（`node_modules`/`dist`/`build`/`vendor`/`target` 等）时，在 `qe.commands.dupCheck` 覆盖完整命令。确无法运行（如离线环境）时，走 `dupCheckApplicability: "n/a"` 双要素豁免。
 
 **本项目**：（默认沿用框架命令；如有覆盖或豁免，在此说明）
 
@@ -106,10 +106,10 @@
 - 密钥/凭证禁止硬编码，统一走环境变量或密钥管理服务；
 - 所有外部输入（用户输入、第三方接口响应）须校验/转义，防注入（SQL/命令/XSS 等）；
 - 对外错误信息须脱敏，禁止暴露堆栈、内部路径、密钥等敏感细节（呼应 §5 日志规范）；
-- 依赖安全审计命令见 `quality-assurance-engineer.md`「依赖审计命令」，执行结果记录于质量报告。
+- 依赖安全审计命令见 `quality-engineer.md`「依赖审计命令」，执行结果记录于质量报告。
 
 ### 安全静态扫描命令（R16，文档留痕）
 
-> **机制说明**：硬编码密钥泄露扫描经 `gitleaks-secret-scanner`（`npx --yes gitleaks-secret-scanner ...`）实现，同 §5 重复代码检测，**跨技术栈通用、经 `npx` 自动获取，多数项目不必修改** `harness.config.json`；仅当需替换为项目已有的 SAST 工具（如 semgrep，覆盖更深的注入类检测）时，在 `qa.commands.securityScan` 覆盖完整命令。确无法运行时，走 `securityScanApplicability: "n/a"` 双要素豁免。
+> **机制说明**：硬编码密钥泄露扫描经 `gitleaks-secret-scanner`（`npx --yes gitleaks-secret-scanner ...`）实现，同 §5 重复代码检测，**跨技术栈通用、经 `npx` 自动获取，多数项目不必修改** `harness.config.json`；仅当需替换为项目已有的 SAST 工具（如 semgrep，覆盖更深的注入类检测）时，在 `qe.commands.securityScan` 覆盖完整命令。确无法运行时，走 `securityScanApplicability: "n/a"` 双要素豁免。
 
 **本项目**：（默认沿用框架命令；如有覆盖或豁免，在此说明）

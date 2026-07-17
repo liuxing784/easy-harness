@@ -3,8 +3,8 @@
  * 命令解析与 gatePassed 判据计算。与 workflow-gate-lib.mjs 独立（不引入运行时状态
  * 依赖），便于单测覆盖。
  *
- * 静态代码质量门禁（R16，AGENTS.md §8.2 唯一权威定义）：QA 阶段须运行重复代码检测
- * 与安全静态扫描且均退出码为 0，机读结果落盘 test-results/qa/.static-scan-result.json。
+ * 静态代码质量门禁（R16，AGENTS.md §8.2 唯一权威定义）：QE 阶段须运行重复代码检测
+ * 与安全静态扫描且均退出码为 0，机读结果落盘 test-results/qe/.static-scan-result.json。
  * 两项工具均经 `npx` 获取（jscpd-rs / gitleaks-secret-scanner），跨技术栈通用，
  * 不像 lint-run-lib.mjs 那样需要按技术栈探测——本框架已强制要求 Node.js >= 18，
  * `npx` 在任意技术栈项目中均可用。
@@ -14,13 +14,13 @@
 
 /** 重复代码检测默认命令：jscpd-rs，5% 阈值，超限退出码非 0，JSON 报告落盘供人工核查 */
 export const DEFAULT_DUP_COMMAND =
-  'npx --yes jscpd-rs --threshold 5 --exitCode 1 --reporters json --output test-results/qa/.jscpd --ignore "**/node_modules/**,**/dist/**,**/build/**,**/.git/**,**/test-results/**,**/vendor/**,**/target/**,**/coverage/**" .';
+  'npx --yes jscpd-rs --threshold 5 --exitCode 1 --reporters json --output test-results/qe/.jscpd --ignore "**/node_modules/**,**/dist/**,**/build/**,**/.git/**,**/test-results/**,**/vendor/**,**/target/**,**/coverage/**" .';
 
 /** 安全静态扫描默认命令：gitleaks-secret-scanner，跨平台自动获取 gitleaks 二进制，扫描全部改动 */
 export const DEFAULT_SECURITY_COMMAND = 'npx --yes gitleaks-secret-scanner --diff-mode all';
 
 /**
- * 解析重复代码检测命令：`harness.config.json` → `qa.commands.dupCheck` 覆盖优先
+ * 解析重复代码检测命令：`harness.config.json` → `qe.commands.dupCheck` 覆盖优先
  * （显式空串视为「禁用默认命令」，回退为 no-command，须走适用性豁免），否则使用通用默认值。
  * @param {{ override?: string|null }} params
  * @returns {string|null}

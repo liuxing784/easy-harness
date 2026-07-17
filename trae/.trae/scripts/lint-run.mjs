@@ -5,8 +5,8 @@
  * 用法：
  *   node .trae/scripts/lint-run.mjs            # 自动探测技术栈并运行 lint
  *
- * lint 命令解析优先级：harness.config.json → qa.commands.lint 覆盖 > 探测栈默认值。
- * 产物：test-results/qa/.lint-result.json（gatePassed 字段），由 workflow-gate-lib.mjs
+ * lint 命令解析优先级：harness.config.json → qe.commands.lint 覆盖 > 探测栈默认值。
+ * 产物：test-results/qe/.lint-result.json（gatePassed 字段），由 workflow-gate-lib.mjs
  * 的 readLintResult() 读取，供 gate-stop-workflow / gate-role-sequence 机械判定。
  * gatePassed=true 仅当「有 lint 命令且退出码为 0」；无 lint 命令时 gatePassed=false。
  */
@@ -19,10 +19,10 @@ import { resolveLintCommand, computeLintGate } from './lint-run-lib.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const HARNESS_CONFIG = path.join(PROJECT_ROOT, '.trae/harness.config.json');
-const RESULT_DIR = path.join(PROJECT_ROOT, 'test-results/qa');
+const RESULT_DIR = path.join(PROJECT_ROOT, 'test-results/qe');
 const RESULT_FILE = path.join(RESULT_DIR, '.lint-result.json');
 
-// 与 qa-run.mjs 同口径的技术栈探测（按构建清单文件识别）
+// 与 qe-run.mjs 同口径的技术栈探测（按构建清单文件识别）
 const STACK_DETECTORS = [
   { stack: 'node', manifest: 'package.json' },
   { stack: 'python', manifest: 'pyproject.toml' },
@@ -59,7 +59,7 @@ function loadLintOverride() {
   if (!fs.existsSync(HARNESS_CONFIG)) return null;
   try {
     const config = JSON.parse(fs.readFileSync(HARNESS_CONFIG, 'utf8'));
-    const lint = config.qa?.commands?.lint;
+    const lint = config.qe?.commands?.lint;
     return typeof lint === 'string' ? lint : null;
   } catch {
     return null;

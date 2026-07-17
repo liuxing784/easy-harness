@@ -159,7 +159,7 @@
       "Microsoft\\.VisualStudio\\."
     ]
   },
-  "qa": {
+  "qe": {
     "commands": {}
   }
 }

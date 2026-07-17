@@ -1,36 +1,44 @@
 {
   "version": 1,
   "hooks": {
-    "preToolUse": [
+    "PreToolUse": [
       {
+        "name": "gate-dev-workflow",
+        "enabled": true,
         "command": "node .trae/hooks/gate-dev-workflow.mjs",
-        "matcher": "Write|StrReplace|ApplyPatch|Delete|EditNotebook",
+        "matcher": "Write|Edit|StrReplace|ApplyPatch|Delete|EditNotebook",
         "failClosed": true,
         "timeout": 60
       },
       {
+        "name": "gate-role-sequence",
+        "enabled": true,
         "command": "node .trae/hooks/gate-role-sequence.mjs",
-        "matcher": "Task",
+        "matcher": "Agent|Task|general_purpose_task",
         "failClosed": false,
         "timeout": 60
-      }
-    ],
-    "beforeShellExecution": [
+      },
       {
+        "name": "gate-dev-shell",
+        "enabled": true,
         "command": "node .trae/hooks/gate-dev-shell.mjs",
-        "matcher": ".*",
+        "matcher": "Bash|Shell|Terminal",
         "failClosed": true,
         "timeout": 60
       },
       {
+        "name": "gate-toolchain-install",
+        "enabled": true,
         "command": "node .trae/hooks/gate-toolchain-install.mjs",
-        "matcher": ".*",
+        "matcher": "Bash|Shell|Terminal",
         "failClosed": true,
         "timeout": 60
       }
     ],
-    "stop": [
+    "Stop": [
       {
+        "name": "gate-stop-workflow",
+        "enabled": true,
         "command": "node .trae/hooks/gate-stop-workflow.mjs",
         "loop_limit": 3,
         "timeout": 60

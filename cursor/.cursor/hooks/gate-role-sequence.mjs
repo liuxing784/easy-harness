@@ -19,15 +19,20 @@
  */
 const GATED_ROLES = new Set([
   'system-architect',
-  'product-manager',
+  'requirement-reviewer',
   'development-engineer',
-  'quality-assurance-engineer',
+  'quality-engineer',
   'test-engineer',
 ]);
 
-function failOpenAllow(context, err) {
+function failOpenAllow(context, err, lib) {
   if (err) {
     process.stderr.write(`[gate-role-sequence] fail-open (${context}): ${err?.message ?? err}\n`);
+    try {
+      lib?.recordFailOpenEvent?.('gate-role-sequence', context, err);
+    } catch {
+      /* 落盘失败不影响 fail-open 放行 */
+    }
   }
   process.stdout.write(JSON.stringify({ permission: 'allow' }));
   process.exit(0);
@@ -83,7 +88,7 @@ async function main() {
     );
     process.exit(0);
   } catch (err) {
-    failOpenAllow('runtime', err);
+    failOpenAllow('runtime', err, lib);
   }
 }
 

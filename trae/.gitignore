@@ -1,6 +1,6 @@
 # Harness 受控运行产物（见 AGENTS.md §8.4「受控运行产物例外」）：
-# E2E 机读结果、Playwright trace/截图/video、QA 运行留痕产物均落盘于此，
-# 由 e2e-run.mjs / qa-run.mjs / Playwright 进程内写盘生成，非门禁绕过。
+# E2E 机读结果、Playwright trace/截图/video、QE 运行留痕产物均落盘于此，
+# 由 e2e-run.mjs / qe-run.mjs / Playwright 进程内写盘生成，非门禁绕过。
 test-results/
 
 # 工具链安装批准标记：含本机安装路径与用户确认摘要的临时授权状态（默认 60 分钟有效，

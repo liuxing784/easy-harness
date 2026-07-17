@@ -54,13 +54,13 @@ tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
 
 阶段 2 产出成果物时，须**同时**完成以下两步：
 
-**步骤 A：写入 `harness.config.json` → `qa.commands.lint`**
+**步骤 A：写入 `harness.config.json` → `qe.commands.lint`**
 
 按用户已确认技术栈，从下表复制对应默认 lint 命令写入 `harness.config.json`：
 
 ```json
 {
-  "qa": {
+  "qe": {
     "commands": {
       "lint": "npm run lint"
     }
@@ -79,12 +79,12 @@ tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
 | Ruby（`Gemfile`） | `rubocop` |
 | Java Maven / Java Gradle / PHP / .NET | **无框架默认** → 见下方豁免路径 |
 
-- **有默认命令的栈**：直接写入对应命令。如为 monorepo 或多 manifest 项目，`lint-run.mjs` 的自动探测可能不准确，须以 `qa.commands.lint` 显式覆盖为准。
-- **无框架默认 lint 的栈**（Java/PHP/.NET 等）：优先在 `qa.commands.lint` 写入项目实际可用的等价 lint 命令（如 `mvn checkstyle:check`、`phpcs --standard=PSR12 .`、`dotnet format --verify-no-changes`）；**仅当项目确实无可用 lint 工具时**，走下方 `lintApplicability: "n/a"` 双要素豁免（此时 `qa.commands.lint` 留空）。
+- **有默认命令的栈**：直接写入对应命令。如为 monorepo 或多 manifest 项目，`lint-run.mjs` 的自动探测可能不准确，须以 `qe.commands.lint` 显式覆盖为准。
+- **无框架默认 lint 的栈**（Java/PHP/.NET 等）：优先在 `qe.commands.lint` 写入项目实际可用的等价 lint 命令（如 `mvn checkstyle:check`、`phpcs --standard=PSR12 .`、`dotnet format --verify-no-changes`）；**仅当项目确实无可用 lint 工具时**，走下方 `lintApplicability: "n/a"` 双要素豁免（此时 `qe.commands.lint` 留空）。
 
 **步骤 B：在 `detail-design-spec.md` §5「本项目」表格中留痕**
 
-将步骤 A 写入的命令同步填入 `detail-design-spec.md` §5「本项目」表格（或注明豁免理由），供 QA/PM 查阅。
+将步骤 A 写入的命令同步填入 `detail-design-spec.md` §5「本项目」表格（或注明豁免理由），供 QE/PM 查阅。
 
 ### 门禁适用性豁免（声明模板）
 
@@ -137,7 +137,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
 | 回报状态 | 成果物 | 项目经理动作 |
 | -------- | ------ | ------------ |
 | 阻塞：待用户确认技术选型 | `tech-stack-options.md` | 停止推进；待用户确认后写入 `## 用户确认记录` |
-| 设计成果物有效 | `detail-design-spec.md`、`develop-task-list.md`、`gated-artifacts.json` | 可分派产品经理 |
+| 设计成果物有效 | `detail-design-spec.md`、`develop-task-list.md`、`gated-artifacts.json` | 可分派需求评审专家 |
 
 ## 强制约束
 

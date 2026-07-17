@@ -13,9 +13,9 @@
  *   - 全程使用**隔离 fixture**（写在 `test-results/.gate-scenarios/` 下，经 HARNESS_PROCESS_PATH /
  *     HARNESS_GATED_ARTIFACTS_PATH 指向），不依赖、不改动宿主项目的 `docs/` 成果物。
  *
- * 覆盖场景矩阵：Greenfield(full) / Feature(full) / Hotfix(R11 折叠) / 对抗健壮性 /
- * R14 批次接口测试报告 / R15 编程规范 lint 门禁 / R16 静态代码质量门禁 /
- * R17 业务数据存储对账 / Finding #1（出厂模板阻塞误判）端到端回归。
+ * 覆盖场景矩阵：Greenfield(full) / Feature(full) / Hotfix(R11 折叠) / R15 编程规范 lint 门禁 /
+ * R16 静态代码质量门禁（重复代码+安全扫描）/ R17 业务数据存储对账 / R18 设计审核可修复性与需求覆盖 /
+ * 对抗健壮性 / Finding #1（出厂模板阻塞误判）端到端回归。
  *
  * 用法：
  *   node .trae/scripts/gate-scenarios.mjs           # 运行全部场景
@@ -57,6 +57,13 @@ const CONFIRM_SECTION = [
   '| 确认项 | 时间 | 用户原话摘要 |',
   '| ------ | ---- | ------------ |',
   '| 需求摘要 | 2026-01-01 | 已确认 |',
+  '| 技术选型 | 2026-01-01 | 确认采用 Node.js + Express 技术栈 |',
+].join('\n');
+
+/** hotfix 声明 none 时须含「hotfix影响面」判断依据行（R9 机读） */
+const HOTFIX_CONFIRM_SECTION = [
+  CONFIRM_SECTION,
+  '| hotfix影响面 | 2026-01-01 | 已比对 requirement-list.md 全部 P0，本次修复仅涉及日志格式，不改变任何 P0 行为 |',
 ].join('\n');
 
 const DISPATCH_SECTION = [
@@ -94,10 +101,47 @@ const REQ_LIST =
   '# requirement-list.md\n\n| 需求编号 | 名称 | 描述 | 模块 | 优先级 |\n| --- | --- | --- | --- | --- |\n| R-001 | 待办新增 | 新增待办项 | core | P0 |\n';
 const DESIGN_SPEC = '# detail-design-spec.md\n';
 const TASK_LIST = '# develop-task-list.md\n';
-const DPL_CLEAN =
-  '# 设计问题清单\n\n| 检查维度 | 问题描述 | 严重等级 | 是否存在 | 是否解决 | 关联成果物 |\n| --- | --- | --- | --- | --- | --- |\n| 功能 | 无 | 低 | 否 | | |\n';
-const DPL_UNRESOLVED =
-  '# 设计问题清单\n\n| 检查维度 | 问题描述 | 严重等级 | 是否存在 | 是否解决 | 关联成果物 |\n| --- | --- | --- | --- | --- | --- |\n| 功能 | 边界未定义 | 高 | 是 | 否 | detail-design-spec.md |\n';
+
+// R18 完整格式的清洁设计问题清单：含可修复字段、需求覆盖度维度、P0 覆盖矩阵、审核结论
+function buildCompleteDpl(hasUnresolved = false) {
+  const dimRows = [
+    ['需求覆盖度', '无', '低', '否', '', '', '', '', ''],
+    ['目标达成性', '无', '低', '否', '', '', '', '', ''],
+    ['功能', hasUnresolved ? '边界未定义' : '无', hasUnresolved ? '高' : '低', hasUnresolved ? '是' : '否', hasUnresolved ? '否' : '', hasUnresolved ? 'detail-design-spec.md' : '', 'R-001', 'development-engineer', hasUnresolved ? '明确各接口边界条件与异常处理' : ''],
+    ['体验', '无', '低', '否', '', '', '', '', ''],
+    ['可行性', '无', '低', '否', '', '', '', '', ''],
+    ['MVP 范围', '无', '低', '否', '', '', '', '', ''],
+    ['任务可执行性', '无', '低', '否', '', '', '', '', ''],
+    ['流程合规性', '无', '低', '否', '', '', '', '', ''],
+    ['架构设计原则', '无', '低', '否', '', '', '', '', ''],
+    ['成果物完整性', '无', '低', '否', '', '', '', '', ''],
+    ['测试可执行性', '无', '低', '否', '', '', '', '', ''],
+    ['安全与合规', '无', '低', '否', '', '', '', '', ''],
+  ];
+  const dimTable = dimRows
+    .map((r) => `| ${r[0]} | ${r[1]} | ${r[2]} | ${r[3]} | ${r[4]} | ${r[5]} | ${r[6]} | ${r[7]} | ${r[8]} |`)
+    .join('\n');
+  const coverageMatrix = [
+    '## 需求覆盖矩阵',
+    '',
+    '| 需求编号 | 优先级 | 验收标准 | 设计落点 | 设计落点原文摘录 | 任务包 | 覆盖结论 |',
+    '| -------- | ------ | -------- | -------- | ---------------- | ------ | -------- |',
+    '| R-001 | P0 | 新增待办项功能完整实现 | 待办接口设计 | detail-design-spec.md §2 | T0-1 | 已覆盖 |',
+    '',
+  ].join('\n');
+  const conclusion = [
+    '## 审核结论',
+    '',
+    '| 审核轮次 | 结论 | 说明 |',
+    '| -------- | ---- | ---- |',
+    '| 1 | 通过 | 首次审核通过 |',
+    '',
+  ].join('\n');
+  return `# 设计问题清单\n\n## 审核问题表\n\n| 检查维度 | 问题描述 | 严重等级 | 是否存在 | 是否解决 | 关联成果物 | 关联需求编号 | 建议责任角色 | 修复建议 |\n| -------- | -------- | -------- | -------- | -------- | ---------- | ------------ | ------------ | -------- |\n${dimTable}\n\n${coverageMatrix}\n${conclusion}`;
+}
+const DPL_CLEAN = buildCompleteDpl(false);
+const DPL_UNRESOLVED = buildCompleteDpl(true);
+
 const GATED_EMPTY = '{}\n';
 // R14 + R17：含非空「## 接口测试报告」与「## 存储对账记录」（接口+E2E 行，合法介质）
 const TEST_REPORT_API = [
@@ -147,6 +191,7 @@ const API_EXEMPT_CONFIRM = [
   '| 确认项 | 时间 | 用户原话摘要 |',
   '| ------ | ---- | ------------ |',
   '| 需求摘要 | 2026-01-01 | 已确认 |',
+  '| 技术选型 | 2026-01-01 | 确认采用 Node.js + Express 技术栈 |',
   '| 接口测试豁免 | 2026-01-01 | 纯算法库无对外接口，确认豁免接口测试 |',
 ].join('\n');
 const API_NA_GATED = '{\n  "apiTestApplicability": "n/a",\n  "apiTestApplicabilityReason": "纯算法库无对外接口"\n}\n';
@@ -158,6 +203,7 @@ const STORAGE_EXEMPT_CONFIRM = [
   '| 确认项 | 时间 | 用户原话摘要 |',
   '| ------ | ---- | ------------ |',
   '| 需求摘要 | 2026-01-01 | 已确认 |',
+  '| 技术选型 | 2026-01-01 | 确认采用 Node.js + Express 技术栈 |',
   '| 存储对账豁免 | 2026-01-01 | 无业务数据持久化，确认豁免存储对账 |',
 ].join('\n');
 const STORAGE_NA_GATED =
@@ -323,19 +369,25 @@ function featureReady(progressRows = []) {
   ].join('\n');
 }
 
-function hotfixProcess({ dispatch = true, progressRows = [] } = {}) {
+function hotfixProcess({
+  dispatch = true,
+  progressRows = [],
+  withHotfixJustification = true,
+  p0Impact = 'none',
+} = {}) {
   return [
     '---',
     'phase: development',
     'workflow_mode: hotfix',
     'iterationType: hotfix',
+    `hotfix_p0_impact: ${p0Impact}`,
     'blocking: false',
     'cancelled: false',
     '---',
     '',
     '# 流程进度记录（hotfix）',
     '',
-    CONFIRM_SECTION,
+    withHotfixJustification ? HOTFIX_CONFIRM_SECTION : CONFIRM_SECTION,
     '',
     dispatch ? DISPATCH_SECTION : EMPTY_DISPATCH_SECTION,
     '',
@@ -473,10 +525,10 @@ const E2E_FILES = {
   batch: path.join(E2E_DIR, '.e2e-batch-result.json'),
   final: path.join(E2E_DIR, '.e2e-final-result.json'),
 };
-const QA_DIR = path.join(PROJECT_ROOT, 'test-results/qa');
-const QA_FILES = {
-  lint: path.join(QA_DIR, '.lint-result.json'),
-  staticScan: path.join(QA_DIR, '.static-scan-result.json'),
+const QE_DIR = path.join(PROJECT_ROOT, 'test-results/qe');
+const QE_FILES = {
+  lint: path.join(QE_DIR, '.lint-result.json'),
+  staticScan: path.join(QE_DIR, '.static-scan-result.json'),
 };
 const e2eSnapshot = {};
 const qaSnapshot = {};
@@ -485,7 +537,7 @@ function snapshotE2e() {
   for (const [scope, file] of Object.entries(E2E_FILES)) {
     e2eSnapshot[scope] = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
   }
-  for (const [key, file] of Object.entries(QA_FILES)) {
+  for (const [key, file] of Object.entries(QE_FILES)) {
     qaSnapshot[key] = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
   }
 }
@@ -496,7 +548,7 @@ function restoreE2e() {
     if (snap === null) fs.rmSync(file, { force: true });
     else fs.writeFileSync(file, snap, 'utf8');
   }
-  for (const [key, file] of Object.entries(QA_FILES)) {
+  for (const [key, file] of Object.entries(QE_FILES)) {
     const snap = qaSnapshot[key];
     if (snap === null) fs.rmSync(file, { force: true });
     else fs.writeFileSync(file, snap, 'utf8');
@@ -539,7 +591,7 @@ function clearE2e(scope) {
 }
 
 function writeLintPass() {
-  fs.mkdirSync(QA_DIR, { recursive: true });
+  fs.mkdirSync(QE_DIR, { recursive: true });
   const result = {
     gatePassed: true,
     reason: 'passed',
@@ -549,11 +601,11 @@ function writeLintPass() {
     executedAt: new Date().toISOString(),
     _note: 'Synthesized by gate-scenarios.mjs for regression only.',
   };
-  fs.writeFileSync(QA_FILES.lint, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(QE_FILES.lint, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
 }
 
 function writeLintFail() {
-  fs.mkdirSync(QA_DIR, { recursive: true });
+  fs.mkdirSync(QE_DIR, { recursive: true });
   const result = {
     gatePassed: false,
     reason: 'lint-failed',
@@ -563,16 +615,16 @@ function writeLintFail() {
     executedAt: new Date().toISOString(),
     _note: 'Synthesized by gate-scenarios.mjs for regression only.',
   };
-  fs.writeFileSync(QA_FILES.lint, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(QE_FILES.lint, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
 }
 
 function clearLint() {
-  fs.rmSync(QA_FILES.lint, { force: true });
+  fs.rmSync(QE_FILES.lint, { force: true });
 }
 
 function writeStaticScanResult(result) {
-  fs.mkdirSync(QA_DIR, { recursive: true });
-  fs.writeFileSync(QA_FILES.staticScan, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+  fs.mkdirSync(QE_DIR, { recursive: true });
+  fs.writeFileSync(QE_FILES.staticScan, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
 }
 
 function writeStaticScanPass() {
@@ -606,7 +658,7 @@ function writeStaticScanSecurityFail() {
 }
 
 function clearStaticScan() {
-  fs.rmSync(QA_FILES.staticScan, { force: true });
+  fs.rmSync(QE_FILES.staticScan, { force: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -679,10 +731,101 @@ function greenfieldScenarios() {
   check('G6 设计审核通过 + 有效分派计划发起 development-engineer', 'allow', {
     hook: 'role', role: 'development-engineer', processPath: readyProc, gatedPath: readyGated,
   });
-  check('G7 开发未开始发起 quality-assurance-engineer', 'deny', {
-    hook: 'role', role: 'quality-assurance-engineer', processPath: readyProc, gatedPath: readyGated,
+  check('G7 开发未开始发起 quality-engineer', 'deny', {
+    hook: 'role', role: 'quality-engineer', processPath: readyProc, gatedPath: readyGated,
   });
-  check('G8 QA 未过发起 test-engineer', 'deny', {
+
+  const qeInProgress = writeFixture('gf-qe-inprogress', {
+    'docs/process/process.md': [
+      '---',
+      'phase: development',
+      'workflow_mode: full',
+      'iterationType: greenfield',
+      'blocking: false',
+      'cancelled: false',
+      '---',
+      '',
+      ARTIFACT_REF,
+      '',
+      CONFIRM_SECTION,
+      '',
+      '## 当前分派计划',
+      '',
+      '| 任务包编号 | 分派角色 | 并行/串行 | 状态 |',
+      '| ---------- | -------- | --------- | ---- |',
+      '| T0-1 | quality-engineer | 串行 | 待 QE |',
+      '',
+      '## 待派发角色列表',
+      '',
+      '| 角色 | 说明 |',
+      '| ---- | ---- |',
+      '| quality-engineer | T0-1 |',
+      '',
+      progressSection(['| 开发工程师 | T0-1 | 正在执行 | |']),
+      '',
+      BLOCK_OK,
+      '',
+    ].join('\n'),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+    'docs/design/gated-artifacts.json': GATED_EMPTY,
+  });
+  check('G7b 开发正在执行时发起 quality-engineer（对应任务包未完成）', 'deny', {
+    hook: 'role',
+    role: 'quality-engineer',
+    processPath: relToProject(path.join(qeInProgress, 'docs/process/process.md')),
+    gatedPath: relToProject(path.join(qeInProgress, 'docs/design/gated-artifacts.json')),
+  });
+
+  const qeReady = writeFixture('gf-qe-ready', {
+    'docs/process/process.md': [
+      '---',
+      'phase: development',
+      'workflow_mode: full',
+      'iterationType: greenfield',
+      'blocking: false',
+      'cancelled: false',
+      '---',
+      '',
+      ARTIFACT_REF,
+      '',
+      CONFIRM_SECTION,
+      '',
+      '## 当前分派计划',
+      '',
+      '| 任务包编号 | 分派角色 | 并行/串行 | 状态 |',
+      '| ---------- | -------- | --------- | ---- |',
+      '| T0-1 | quality-engineer | 串行 | 待 QE |',
+      '',
+      '## 待派发角色列表',
+      '',
+      '| 角色 | 说明 |',
+      '| ---- | ---- |',
+      '| quality-engineer | T0-1 |',
+      '',
+      progressSection(['| 开发工程师 | T0-1 | 执行完成 | |']),
+      '',
+      BLOCK_OK,
+      '',
+    ].join('\n'),
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+    'docs/design/gated-artifacts.json': GATED_EMPTY,
+  });
+  check('G7c 对应开发线执行完成且分派含任务包时允许发起 quality-engineer', 'allow', {
+    hook: 'role',
+    role: 'quality-engineer',
+    processPath: relToProject(path.join(qeReady, 'docs/process/process.md')),
+    gatedPath: relToProject(path.join(qeReady, 'docs/design/gated-artifacts.json')),
+  });
+
+  check('G8 QE 未过发起 test-engineer', 'deny', {
     hook: 'role', role: 'test-engineer', processPath: readyProc, gatedPath: readyGated,
   });
 
@@ -703,7 +846,7 @@ function greenfieldScenarios() {
   const stopBatchFail = writeFixture('gf-stop-batchfail', {
     'docs/process/process.md': greenfieldReady([
       '| 开发工程师 | T0-1 | 执行完成 | |',
-      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 质量工程师 | T0-1 | 执行完成 | |',
       '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
     ]),
     'docs/requirement/requirement-spec.md': REQ_SPEC,
@@ -714,6 +857,8 @@ function greenfieldScenarios() {
   });
   writeE2e('batch', { requiredIds: ['R-001'], failed: ['R-001'] });
   clearE2e('final');
+  writeLintPass();
+  writeStaticScanPass();
   check('G10 批次 E2E 失败就想推进/收尾', 'followup', {
     hook: 'stop', processPath: relToProject(path.join(stopBatchFail, 'docs/process/process.md')),
   });
@@ -721,7 +866,7 @@ function greenfieldScenarios() {
   const stopBatchNoApi = writeFixture('gf-stop-batch-noapi', {
     'docs/process/process.md': greenfieldReady([
       '| 开发工程师 | T0-1 | 执行完成 | |',
-      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 质量工程师 | T0-1 | 执行完成 | |',
       '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
     ]),
     'docs/requirement/requirement-spec.md': REQ_SPEC,
@@ -741,7 +886,7 @@ function greenfieldScenarios() {
   const stopBatchNoStorage = writeFixture('gf-stop-batch-nostorage', {
     'docs/process/process.md': greenfieldReady([
       '| 开发工程师 | T0-1 | 执行完成 | |',
-      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 质量工程师 | T0-1 | 执行完成 | |',
       '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
     ]),
     'docs/requirement/requirement-spec.md': REQ_SPEC,
@@ -762,7 +907,7 @@ function greenfieldScenarios() {
   const stopFinal = writeFixture('gf-stop-final', {
     'docs/process/process.md': greenfieldReady([
       '| 开发工程师 | T0-1 | 执行完成 | |',
-      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 质量工程师 | T0-1 | 执行完成 | |',
       '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
       '| 测试工程师 | 最终整体集成测试 | 执行完成 | |',
     ]),
@@ -786,7 +931,7 @@ function greenfieldScenarios() {
   const stopApiNaOnly = writeFixture('gf-stop-apina-only', {
     'docs/process/process.md': greenfieldReady([
       '| 开发工程师 | T0-1 | 执行完成 | |',
-      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 质量工程师 | T0-1 | 执行完成 | |',
       '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
     ]),
     'docs/requirement/requirement-spec.md': REQ_SPEC,
@@ -809,7 +954,7 @@ function greenfieldScenarios() {
   const stopApiExempt = writeFixture('gf-stop-apiexempt', {
     'docs/process/process.md': greenfieldApiExempt([
       '| 开发工程师 | T0-1 | 执行完成 | |',
-      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 质量工程师 | T0-1 | 执行完成 | |',
       '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
       '| 测试工程师 | 最终整体集成测试 | 执行完成 | |',
     ]),
@@ -834,7 +979,7 @@ function greenfieldScenarios() {
   const stopStorageNaOnly = writeFixture('gf-stop-storagena-only', {
     'docs/process/process.md': greenfieldReady([
       '| 开发工程师 | T0-1 | 执行完成 | |',
-      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 质量工程师 | T0-1 | 执行完成 | |',
       '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
     ]),
     'docs/requirement/requirement-spec.md': REQ_SPEC,
@@ -858,7 +1003,7 @@ function greenfieldScenarios() {
   const stopStorageExempt = writeFixture('gf-stop-storageexempt', {
     'docs/process/process.md': greenfieldStorageExempt([
       '| 开发工程师 | T0-1 | 执行完成 | |',
-      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 质量工程师 | T0-1 | 执行完成 | |',
       '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
       '| 测试工程师 | 最终整体集成测试 | 执行完成 | |',
     ]),
@@ -884,11 +1029,11 @@ function greenfieldScenarios() {
   clearLint();
   clearStaticScan();
 
-  // R15/R16 场景：QA 完成但 lint/static scan 未通过，stop 门禁应 followup
+  // R15/R16 场景：QE 完成但 lint/static scan 未通过，stop 门禁应 followup
   const stopLintFail = writeFixture('gf-stop-lintfail', {
     'docs/process/process.md': greenfieldReady([
       '| 开发工程师 | T0-1 | 执行完成 | |',
-      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 质量工程师 | T0-1 | 执行完成 | |',
     ]),
     'docs/requirement/requirement-spec.md': REQ_SPEC,
     'docs/requirement/requirement-list.md': REQ_LIST,
@@ -898,14 +1043,14 @@ function greenfieldScenarios() {
   });
   clearE2e('batch');
   clearE2e('final');
-  check('G12 R15：QA 完成但 lint 门禁未通过', 'followup', {
+  check('G12 R15：QE 完成但 lint 门禁未通过', 'followup', {
     hook: 'stop', processPath: relToProject(path.join(stopLintFail, 'docs/process/process.md')),
   });
 
   const stopStaticFail = writeFixture('gf-stop-staticfail', {
     'docs/process/process.md': greenfieldReady([
       '| 开发工程师 | T0-1 | 执行完成 | |',
-      '| 质量保障工程师 | T0-1 | 执行完成 | |',
+      '| 质量工程师 | T0-1 | 执行完成 | |',
       '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
       '| 测试工程师 | 最终整体集成测试 | 执行完成 | |',
     ]),
@@ -975,19 +1120,33 @@ function hotfixScenarios() {
     gatedPath: relToProject(path.join(ready, 'docs/design/gated-artifacts.json')),
   });
 
+  const noJust = writeFixture('hotfix-no-justification', {
+    'docs/process/process.md': hotfixProcess({ dispatch: true, withHotfixJustification: false }),
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/gated-artifacts.json': GATED_EMPTY,
+  });
+  check('H3b R9：hotfix_p0_impact=none 缺「hotfix影响面」依据时发起 development-engineer', 'deny', {
+    hook: 'role',
+    role: 'development-engineer',
+    processPath: relToProject(path.join(noJust, 'docs/process/process.md')),
+    gatedPath: relToProject(path.join(noJust, 'docs/design/gated-artifacts.json')),
+  });
+
   const stopNoTest = writeFixture('hotfix-stop-notest', {
     'docs/process/process.md': hotfixProcess({
       dispatch: true,
       progressRows: [
         '| 开发工程师 | T-1 | 执行完成 | |',
-        '| 质量保障工程师 | T-1 | 执行完成 | |',
+        '| 质量工程师 | T-1 | 执行完成 | |',
       ],
     }),
     'docs/design/detail-design-spec.md': DESIGN_SPEC,
   });
   clearE2e('batch');
   clearE2e('final');
-  check('H4 R11：QA 过但未做（唯一一次）集成测试即收尾', 'followup', {
+  writeLintPass();
+  writeStaticScanPass();
+  check('H4 R11：QE 过但未做（唯一一次）集成测试即收尾', 'followup', {
     hook: 'stop', processPath: relToProject(path.join(stopNoTest, 'docs/process/process.md')),
   });
 
@@ -996,7 +1155,7 @@ function hotfixScenarios() {
       dispatch: true,
       progressRows: [
         '| 开发工程师 | T-1 | 执行完成 | |',
-        '| 质量保障工程师 | T-1 | 执行完成 | |',
+        '| 质量工程师 | T-1 | 执行完成 | |',
         '| 测试工程师 | 最终集成测试 | 执行完成 | |',
       ],
     }),
@@ -1009,6 +1168,215 @@ function hotfixScenarios() {
     hook: 'stop', processPath: relToProject(path.join(stopFinal, 'docs/process/process.md')),
   });
   clearE2e('final');
+  clearLint();
+  clearStaticScan();
+
+  // R9 软性提醒（非阻塞）：P0 影响的 hotfix，唯一测试通道通过但本次报告缺结构化接口/存储章节时，
+  // 仍须放行收尾（不得因软性提醒而变为 followup/阻塞），但 process.md 应留下一次性提醒记录。
+  const stopFinalP0 = writeFixture('hotfix-stop-final-p0', {
+    'docs/process/process.md': hotfixProcess({
+      dispatch: true,
+      p0Impact: 'p0',
+      progressRows: [
+        '| 开发工程师 | T-1 | 执行完成 | |',
+        '| 质量工程师 | T-1 | 执行完成 | |',
+        '| 测试工程师 | 最终集成测试 | 执行完成 | |',
+      ],
+    }),
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/test/test-report.md': ['# 测试报告', '', '## 集成测试记录', '', '全部通过。', ''].join('\n'),
+  });
+  const stopFinalP0ProcRel = relToProject(path.join(stopFinalP0, 'docs/process/process.md'));
+  writeE2e('final', { requiredIds: ['R-001'], passed: ['R-001'] });
+  writeLintPass();
+  writeStaticScanPass();
+  check('H6 R9 软性提醒：P0 影响 hotfix 报告缺结构化接口/存储章节仍放行收尾（非阻塞）', 'allow-stop', {
+    hook: 'stop', processPath: stopFinalP0ProcRel,
+  });
+  const remindedContent = fs.readFileSync(path.join(PROJECT_ROOT, stopFinalP0ProcRel), 'utf8');
+  const reminderWritten =
+    /## 门禁软性提醒（非阻塞）/.test(remindedContent) && /接口测试报告|存储对账记录/.test(remindedContent);
+  if (reminderWritten) {
+    passCount += 1;
+    console.log('  PASS  :: H6b R9 软性提醒：process.md 已写入一次性非阻塞提醒记录');
+  } else {
+    failCount += 1;
+    failures.push({ label: 'H6b R9 软性提醒：process.md 未写入提醒记录', expect: 'reminder-written', outcome: 'missing' });
+    console.error('  FAIL  :: H6b R9 软性提醒：process.md 未写入提醒记录');
+  }
+  clearE2e('final');
+  clearLint();
+  clearStaticScan();
+}
+
+const QUALITY_REPORT_CLEAN = [
+  '# 质量报告',
+  '',
+  '## 审查结论',
+  '',
+  '| 检查维度 | 要点 | 是否存在问题 | 严重等级 | 是否解决 | 说明 |',
+  '| -------- | ---- | ------------ | -------- | -------- | ---- |',
+  '| 代码规范 | 符合设计文档 §5 | 否 | 低 | | |',
+  '',
+  '## 审查结论汇总',
+  '',
+  '- 质量判定：通过',
+  '',
+].join('\n');
+
+const QE_DONE_ROWS = [
+  '| 开发工程师 | T0-1 | 执行完成 | |',
+  '| 质量工程师 | T0-1 | 执行完成 | |',
+];
+
+function lintGateScenarios() {
+  console.log('== 场景 4：编程规范（lint）硬门禁（R15）==');
+
+  // stop 门禁：QE 记录完成后 lint 未通过则注入 followup
+  const stopBase = {
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+  };
+
+  const stopLintFail = writeFixture('lint-stop-fail', {
+    'docs/process/process.md': greenfieldReady(QE_DONE_ROWS),
+    ...stopBase,
+  });
+  clearE2e('batch');
+  clearE2e('final');
+  writeLintFail();
+  writeStaticScanPass();
+  check('L1 QE 记录完成但 lint 失败即想推进/收尾', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopLintFail, 'docs/process/process.md')),
+  });
+
+  const stopLintMissing = writeFixture('lint-stop-missing', {
+    'docs/process/process.md': greenfieldReady(QE_DONE_ROWS),
+    ...stopBase,
+  });
+  clearE2e('batch');
+  clearE2e('final');
+  clearLint();
+  writeStaticScanPass();
+  check('L2 QE 记录完成但缺 lint 机读产物即想推进/收尾', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopLintMissing, 'docs/process/process.md')),
+  });
+
+  // 角色派发门禁（R13/R15）：lint 未通过时禁止发起 test-engineer
+  const roleBase = {
+    ...stopBase,
+    'docs/quality/quality-report.md': QUALITY_REPORT_CLEAN,
+    'docs/design/gated-artifacts.json': GATED_EMPTY,
+  };
+
+  const roleLintFail = writeFixture('lint-role-fail', {
+    'docs/process/process.md': greenfieldReady(QE_DONE_ROWS),
+    ...roleBase,
+  });
+  const roleFailProc = relToProject(path.join(roleLintFail, 'docs/process/process.md'));
+  const roleFailGated = relToProject(path.join(roleLintFail, 'docs/design/gated-artifacts.json'));
+  writeLintFail();
+  writeStaticScanPass();
+  check('L3 QE 通过但 lint 未过发起 test-engineer', 'deny', {
+    hook: 'role', role: 'test-engineer', processPath: roleFailProc, gatedPath: roleFailGated,
+  });
+
+  const roleLintPass = writeFixture('lint-role-pass', {
+    'docs/process/process.md': greenfieldReady(QE_DONE_ROWS),
+    ...roleBase,
+  });
+  const rolePassProc = relToProject(path.join(roleLintPass, 'docs/process/process.md'));
+  const rolePassGated = relToProject(path.join(roleLintPass, 'docs/design/gated-artifacts.json'));
+  writeLintPass();
+  writeStaticScanPass();
+  check('L4 QE 通过 + lint 通过 + 静态代码质量门禁通过后发起 test-engineer', 'allow', {
+    hook: 'role', role: 'test-engineer', processPath: rolePassProc, gatedPath: rolePassGated,
+  });
+  clearLint();
+  clearStaticScan();
+}
+
+function staticScanGateScenarios() {
+  console.log('== 场景 5：静态代码质量硬门禁（R16：重复代码 + 安全扫描）==');
+
+  // stop 门禁：QE 记录完成后重复代码/安全扫描未通过则注入 followup
+  const stopBase = {
+    'docs/requirement/requirement-spec.md': REQ_SPEC,
+    'docs/requirement/requirement-list.md': REQ_LIST,
+    'docs/design/detail-design-spec.md': DESIGN_SPEC,
+    'docs/design/develop-task-list.md': TASK_LIST,
+    'docs/design/design-problem-list.md': DPL_CLEAN,
+  };
+
+  const stopDupFail = writeFixture('static-scan-stop-dupfail', {
+    'docs/process/process.md': greenfieldReady(QE_DONE_ROWS),
+    ...stopBase,
+  });
+  clearE2e('batch');
+  clearE2e('final');
+  writeLintPass();
+  writeStaticScanDupFail();
+  check('S1 QE 记录完成但重复代码检测未通过即想推进/收尾', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopDupFail, 'docs/process/process.md')),
+  });
+
+  const stopSecurityFail = writeFixture('static-scan-stop-securityfail', {
+    'docs/process/process.md': greenfieldReady(QE_DONE_ROWS),
+    ...stopBase,
+  });
+  clearE2e('batch');
+  clearE2e('final');
+  writeLintPass();
+  writeStaticScanSecurityFail();
+  check('S2 QE 记录完成但安全静态扫描未通过即想推进/收尾', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopSecurityFail, 'docs/process/process.md')),
+  });
+
+  const stopMissing = writeFixture('static-scan-stop-missing', {
+    'docs/process/process.md': greenfieldReady(QE_DONE_ROWS),
+    ...stopBase,
+  });
+  clearE2e('batch');
+  clearE2e('final');
+  writeLintPass();
+  clearStaticScan();
+  check('S3 QE 记录完成但缺静态代码质量机读产物即想推进/收尾', 'followup', {
+    hook: 'stop', processPath: relToProject(path.join(stopMissing, 'docs/process/process.md')),
+  });
+
+  // 角色派发门禁（R13/R16）：重复代码/安全扫描未通过时禁止发起 test-engineer
+  const roleBase = {
+    ...stopBase,
+    'docs/quality/quality-report.md': QUALITY_REPORT_CLEAN,
+    'docs/design/gated-artifacts.json': GATED_EMPTY,
+  };
+
+  const roleScanFail = writeFixture('static-scan-role-fail', {
+    'docs/process/process.md': greenfieldReady(QE_DONE_ROWS),
+    ...roleBase,
+  });
+  const roleFailProc = relToProject(path.join(roleScanFail, 'docs/process/process.md'));
+  const roleFailGated = relToProject(path.join(roleScanFail, 'docs/design/gated-artifacts.json'));
+  writeLintPass();
+  writeStaticScanSecurityFail();
+  check('S4 QE 通过 + lint 通过但安全静态扫描未过发起 test-engineer', 'deny', {
+    hook: 'role', role: 'test-engineer', processPath: roleFailProc, gatedPath: roleFailGated,
+  });
+
+  const roleScanPass = writeFixture('static-scan-role-pass', {
+    'docs/process/process.md': greenfieldReady(QE_DONE_ROWS),
+    ...roleBase,
+  });
+  const rolePassProc = relToProject(path.join(roleScanPass, 'docs/process/process.md'));
+  const rolePassGated = relToProject(path.join(roleScanPass, 'docs/design/gated-artifacts.json'));
+  writeLintPass();
+  writeStaticScanPass();
+  check('S5 QE 通过 + lint 通过 + 重复代码/安全扫描均通过后发起 test-engineer', 'allow', {
+    hook: 'role', role: 'test-engineer', processPath: rolePassProc, gatedPath: rolePassGated,
+  });
   clearLint();
   clearStaticScan();
 }
@@ -1121,6 +1489,8 @@ function main() {
     greenfieldScenarios();
     featureScenarios();
     hotfixScenarios();
+    lintGateScenarios();
+    staticScanGateScenarios();
     adversarialScenarios();
     finding1Scenario();
   } finally {

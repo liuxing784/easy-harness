@@ -4,8 +4,13 @@
  * 自锁防护（AGENTS.md §8.4）：workflow-gate-lib.mjs 动态加载失败或执行期出现未预期
  * 异常时 fail-open 放行并打印 stderr 告警，避免门禁自身故障导致全流程硬死锁。
  */
-function failOpenAllow(context, err) {
+function failOpenAllow(context, err, lib) {
   process.stderr.write(`[gate-dev-workflow] fail-open (${context}): ${err?.message ?? err}\n`);
+  try {
+    lib?.recordFailOpenEvent?.('gate-dev-workflow', context, err);
+  } catch {
+    /* 落盘失败不影响 fail-open 放行 */
+  }
   process.stdout.write(JSON.stringify({ permission: 'allow' }));
   process.exit(0);
 }
@@ -75,7 +80,7 @@ async function main() {
     assertDevGateOrDeny();
     allow();
   } catch (err) {
-    failOpenAllow('runtime', err);
+    failOpenAllow('runtime', err, lib);
   }
 }
 

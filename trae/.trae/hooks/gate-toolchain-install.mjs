@@ -5,6 +5,13 @@
  */
 function failOpenAllow(context, err) {
   process.stderr.write(`[gate-toolchain-install] fail-open (${context}): ${err?.message ?? err}\n`);
+  if (globalThis.__gateLib?.recordFailOpenEvent) {
+    try {
+      globalThis.__gateLib.recordFailOpenEvent('gate-toolchain-install', context, err);
+    } catch {
+      // 写日志失败不影响 fail-open 放行
+    }
+  }
   process.stdout.write(JSON.stringify({ permission: 'allow' }));
   process.exit(0);
 }
@@ -19,6 +26,7 @@ async function main() {
   }
 
   const { allow, ask, isToolchainInstallCommand, hasToolchainInstallApproval, readStdinJsonAsync } = lib;
+  globalThis.__gateLib = lib;
 
   try {
     const input = await readStdinJsonAsync();

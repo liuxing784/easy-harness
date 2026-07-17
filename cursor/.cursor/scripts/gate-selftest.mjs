@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 门禁逻辑回归自检：覆盖 R3 / R6 / B1 / R9 / R10 / R11 / R13 / R14 / R15 / R16 / R17 最低必测集，
+ * 门禁逻辑回归自检：覆盖 R3 / R6 / B1 / R9 / R10 / R11 / R13 / R14 / R15 / R16 / R17 / R18 最低必测集，
  * 以及 Finding #1（出厂模板阻塞误判）回归。
  * 纯 Node，无需额外依赖。通过临时 fixture（写入 test-results/.gate-selftest/ 下的
  * docs 子树 + process.md，借助 HARNESS_PROCESS_PATH 环境变量切换活跃流程指针）
@@ -32,6 +32,19 @@ import {
   checkStaticScanClean,
   hasUnresolvedIssues,
   isProcessBlocked,
+  checkDesignProblemListStructure,
+  checkRequirementCoverageMatrix,
+  extractP0RequirementIds,
+  checkDesignReviewClean,
+  checkTechSelectionConfirmed,
+  checkDesignReviewConclusion,
+  checkHotfixP0Impact,
+  checkHotfixP0InterfaceStorageMention,
+  recordHotfixP0SoftReminder,
+  recordFailOpenEvent,
+  hasResolvedDesignIssues,
+  extractQeDispatchTaskPacks,
+  getDevLineStatusForTaskPack,
 } from '../hooks/workflow-gate-lib.mjs';
 import { resolveLintCommand, computeLintGate } from './lint-run-lib.mjs';
 import {
@@ -84,9 +97,9 @@ function cleanup() {
   delete process.env.HARNESS_GATED_ARTIFACTS_PATH;
 }
 
-// R15：lint 机读产物固定落盘于 test-results/qa/.lint-result.json（非 fixture 子树）；
+// R15：lint 机读产物固定落盘于 test-results/qe/.lint-result.json（非 fixture 子树）；
 // 自检期间快照/还原真实文件，避免污染宿主运行时产物。
-const LINT_RESULT_PATH = path.join(PROJECT_ROOT, 'test-results/qa/.lint-result.json');
+const LINT_RESULT_PATH = path.join(PROJECT_ROOT, 'test-results/qe/.lint-result.json');
 let _lintSnapshot;
 function snapshotLintResult() {
   _lintSnapshot = fs.existsSync(LINT_RESULT_PATH) ? fs.readFileSync(LINT_RESULT_PATH, 'utf8') : null;
@@ -103,9 +116,9 @@ function clearLintResult() {
   fs.rmSync(LINT_RESULT_PATH, { force: true });
 }
 
-// R16：静态代码质量机读产物固定落盘于 test-results/qa/.static-scan-result.json（非 fixture 子树）；
+// R16：静态代码质量机读产物固定落盘于 test-results/qe/.static-scan-result.json（非 fixture 子树）；
 // 自检期间快照/还原真实文件，避免污染宿主运行时产物。
-const STATIC_SCAN_RESULT_PATH = path.join(PROJECT_ROOT, 'test-results/qa/.static-scan-result.json');
+const STATIC_SCAN_RESULT_PATH = path.join(PROJECT_ROOT, 'test-results/qe/.static-scan-result.json');
 let _staticScanSnapshot;
 function snapshotStaticScanResult() {
   _staticScanSnapshot = fs.existsSync(STATIC_SCAN_RESULT_PATH)
@@ -265,11 +278,11 @@ test('R11: hotfix 模式下 finalTestRequired 不要求批次集成测试完成'
     '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
     '| ----------- | -------- | ---- | ---- |',
     '| 开发工程师 | T-1 | 执行完成 | |',
-    '| 质量保障工程师 | T-1 | 执行完成 | |',
+    '| 质量工程师 | T-1 | 执行完成 | |',
     '',
   ].join('\n');
   const state = parseWorkflowState(content);
-  assert.equal(state.finalTestRequired, true, 'hotfix 只需 dev+QA 完成即视为需要（唯一一次）最终测试');
+  assert.equal(state.finalTestRequired, true, 'hotfix 只需 dev+QE 完成即视为需要（唯一一次）最终测试');
 });
 
 console.log('== 表格未解决问题解析（design-problem-list.md / quality-report.md 通用）==');
@@ -280,6 +293,415 @@ test('hasUnresolvedIssues: 识别是否存在=是 且 是否解决≠是 的行'
 test('hasUnresolvedIssues: 已解决问题不计入未解决', () => {
   const content = '| 是否存在 | 是否解决 |\n| --- | --- |\n| 是 | 是 |\n';
   assert.equal(hasUnresolvedIssues(content), false);
+});
+
+const R18_DIMS = [
+  '需求覆盖度',
+  '目标达成性',
+  '功能',
+  '体验',
+  '可行性',
+  'MVP 范围',
+  '任务可执行性',
+  '流程合规性',
+  '架构设计原则',
+  '成果物完整性',
+  '测试可执行性',
+  '安全与合规',
+];
+function makeCleanDplForSelftest(p0Ids = ['R-001']) {
+  const header =
+    '| 检查维度 | 问题描述 | 严重等级 | 是否存在 | 是否解决 | 关联成果物 | 关联需求编号 | 建议责任角色 | 修复建议 |';
+  const sep = '| --- | --- | --- | --- | --- | --- | --- | --- | --- |';
+  const dimRows = R18_DIMS.map((d) => `| ${d} | 无 | 低 | 否 | | | | | |`).join('\n');
+  const covRows = p0Ids
+    .map((id) => `| ${id} | P0 | AC-${id}-1 可验证 | detail-design-spec.md §2 | 用户可创建待办项 | T0-1 | 已覆盖 |`)
+    .join('\n');
+  return [
+    '# 设计问题清单',
+    '',
+    '## 审核问题表',
+    '',
+    header,
+    sep,
+    dimRows,
+    '',
+    '## 需求覆盖矩阵',
+    '',
+    '| 需求编号 | 优先级 | 验收标准 | 设计落点 | 设计落点原文摘录 | 任务包 | 覆盖结论 |',
+    '| --- | --- | --- | --- | --- | --- | --- |',
+    covRows,
+    '',
+    '## 审核结论',
+    '',
+    '| 审核轮次 | 结论 | 说明 |',
+    '| --- | --- | --- |',
+    '| 1 | 通过 | 首次审核无未解决问题 |',
+    '',
+  ].join('\n');
+}
+const SELFTEST_REQ_LIST =
+  '| 需求编号 | 需求名称 | 需求描述 | 验收标准 | 需求优先级 | 来源确认 | 状态 |\n| --- | --- | --- | --- | --- | --- | --- |\n| R-001 | 示例 | 描述 | Given | P0 | 确认 | 已确认 |\n';
+const SELFTEST_DPL_CLEAN = makeCleanDplForSelftest(['R-001']);
+const SELFTEST_DPL_UNRESOLVED = [
+  '# 设计问题清单',
+  '',
+  '## 审核问题表',
+  '',
+  '| 检查维度 | 问题描述 | 严重等级 | 是否存在 | 是否解决 | 关联成果物 | 关联需求编号 | 建议责任角色 | 修复建议 |',
+  '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+  ...R18_DIMS.map((d) =>
+    d === '功能'
+      ? `| ${d} | 问题X | 高 | 是 | 否 | detail-design-spec.md | R-001 | system-architect | 补充边界说明 |`
+      : `| ${d} | 无 | 低 | 否 | | | | | |`,
+  ),
+  '',
+  '## 需求覆盖矩阵',
+  '',
+  '| 需求编号 | 优先级 | 验收标准 | 设计落点 | 设计落点原文摘录 | 任务包 | 覆盖结论 |',
+  '| --- | --- | --- | --- | --- | --- | --- |',
+  '| R-001 | P0 | AC-R-001-1 | detail-design-spec.md §2 | 用户可创建待办项 | T0-1 | 已覆盖 |',
+  '',
+  '## 审核结论',
+  '',
+  '| 审核轮次 | 结论 | 说明 |',
+  '| --- | --- | --- |',
+  '| 1 | 不通过 | 存在未解决问题 |',
+  '',
+].join('\n');
+
+const SELFTEST_TECH_CONFIRM = [
+  '## 用户确认记录',
+  '',
+  '| 确认项 | 时间 | 用户原话摘要 |',
+  '| ------ | ---- | ------------ |',
+  '| 需求摘要 | 2026-01-01 | 已确认 |',
+  '| 技术选型 | 2026-01-01 | 确认采用 Node.js |',
+  '',
+].join('\n');
+
+console.log('== R18：设计审核可修复性与需求覆盖机读 ==');
+test('R18: extractP0RequirementIds 提取 P0', () => {
+  assert.deepEqual(extractP0RequirementIds(SELFTEST_REQ_LIST), ['R-001']);
+});
+test('R18: 完整清洁清单结构通过', () => {
+  assert.equal(checkDesignProblemListStructure(SELFTEST_DPL_CLEAN).ok, true);
+});
+test('R18: 缺少需求覆盖度维度时结构失败', () => {
+  const bad = SELFTEST_DPL_CLEAN.replace('| 需求覆盖度 |', '| 其他维度 |');
+  const r = checkDesignProblemListStructure(bad);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'missing-review-dimension');
+});
+test('R18: 未解决行缺修复建议时结构失败', () => {
+  const bad = SELFTEST_DPL_UNRESOLVED.replace('补充边界说明', '');
+  const r = checkDesignProblemListStructure(bad);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'unresolved-missing-fix');
+});
+test('R18: P0 覆盖矩阵通过', () => {
+  assert.equal(
+    checkRequirementCoverageMatrix(SELFTEST_DPL_CLEAN, SELFTEST_REQ_LIST).ok,
+    true,
+  );
+});
+test('R18: P0 未入矩阵时失败', () => {
+  const bad = SELFTEST_DPL_CLEAN.replace('| R-001 | P0 |', '| R-999 | P0 |');
+  const r = checkRequirementCoverageMatrix(bad, SELFTEST_REQ_LIST);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'p0-missing-in-matrix');
+});
+test('R18: P0 结论非已覆盖时失败', () => {
+  const bad = SELFTEST_DPL_CLEAN.replace('已覆盖', '未覆盖');
+  const r = checkRequirementCoverageMatrix(bad, SELFTEST_REQ_LIST);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'p0-not-covered');
+});
+test('R18: checkDesignReviewClean 在清洁清单+需求清单时通过', () => {
+  fixtureProcess('---\nworkflow_mode: full\n---\n', {
+    'docs/design/design-problem-list.md': SELFTEST_DPL_CLEAN,
+    'docs/requirement/requirement-list.md': SELFTEST_REQ_LIST,
+  });
+  assert.equal(checkDesignReviewClean().ok, true);
+});
+test('R18: 缺少覆盖矩阵章节时 checkDesignReviewClean 失败', () => {
+  const noMatrix = SELFTEST_DPL_CLEAN.replace('## 需求覆盖矩阵', '## 其他章节');
+  fixtureProcess('---\nworkflow_mode: full\n---\n', {
+    'docs/design/design-problem-list.md': noMatrix,
+    'docs/requirement/requirement-list.md': SELFTEST_REQ_LIST,
+  });
+  const r = checkDesignReviewClean();
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'missing-coverage-matrix');
+});
+test('R18: 缺少验收标准列时覆盖矩阵失败', () => {
+  const bad = SELFTEST_DPL_CLEAN
+    .replace('| 需求编号 | 优先级 | 验收标准 | 设计落点 | 设计落点原文摘录 | 任务包 | 覆盖结论 |', '| 需求编号 | 优先级 | 设计落点 | 设计落点原文摘录 | 任务包 | 覆盖结论 |')
+    .replace('| R-001 | P0 | AC-R-001-1 可验证 | detail-design-spec.md §2 | 用户可创建待办项 | T0-1 | 已覆盖 |', '| R-001 | P0 | detail-design-spec.md §2 | 用户可创建待办项 | T0-1 | 已覆盖 |');
+  const r = checkRequirementCoverageMatrix(bad, SELFTEST_REQ_LIST);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'missing-acceptance-column');
+});
+test('R18: 缺少设计落点原文摘录列时覆盖矩阵失败', () => {
+  const bad = SELFTEST_DPL_CLEAN
+    .replace('| 需求编号 | 优先级 | 验收标准 | 设计落点 | 设计落点原文摘录 | 任务包 | 覆盖结论 |', '| 需求编号 | 优先级 | 验收标准 | 设计落点 | 任务包 | 覆盖结论 |')
+    .replace('| R-001 | P0 | AC-R-001-1 可验证 | detail-design-spec.md §2 | 用户可创建待办项 | T0-1 | 已覆盖 |', '| R-001 | P0 | AC-R-001-1 可验证 | detail-design-spec.md §2 | T0-1 | 已覆盖 |');
+  const r = checkRequirementCoverageMatrix(bad, SELFTEST_REQ_LIST);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'missing-excerpt-column');
+});
+test('R18: 设计落点原文摘录为空时覆盖矩阵失败', () => {
+  const bad = SELFTEST_DPL_CLEAN.replace(
+    '| R-001 | P0 | AC-R-001-1 可验证 | detail-design-spec.md §2 | 用户可创建待办项 | T0-1 | 已覆盖 |',
+    '| R-001 | P0 | AC-R-001-1 可验证 | detail-design-spec.md §2 | | T0-1 | 已覆盖 |',
+  );
+  const r = checkRequirementCoverageMatrix(bad, SELFTEST_REQ_LIST);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'p0-empty-design-excerpt');
+});
+test('R18: 缺少审核结论时 checkDesignReviewClean 失败', () => {
+  const noConclusion = SELFTEST_DPL_CLEAN.replace('## 审核结论', '## 其他结论');
+  fixtureProcess('---\nworkflow_mode: full\n---\n', {
+    'docs/design/design-problem-list.md': noConclusion,
+    'docs/requirement/requirement-list.md': SELFTEST_REQ_LIST,
+  });
+  const r = checkDesignReviewClean();
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'missing-review-conclusion');
+});
+test('R18: 已解决问题但结论非复审通过时失败', () => {
+  const resolved = SELFTEST_DPL_UNRESOLVED
+    .replace('| 是 | 否 |', '| 是 | 是 |')
+    .replace('| 1 | 不通过 | 存在未解决问题 |', '| 1 | 通过 | SA 已修复但未复审 |');
+  assert.equal(hasResolvedDesignIssues(resolved), true);
+  const r = checkDesignReviewConclusion(resolved);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'rereview-required');
+});
+test('R18: 已解决问题且复审通过时结论校验通过', () => {
+  const resolved = SELFTEST_DPL_UNRESOLVED
+    .replace('| 是 | 否 |', '| 是 | 是 |')
+    .replace(
+      '| 1 | 不通过 | 存在未解决问题 |',
+      '| 1 | 不通过 | 首次\n| 2 | 复审通过 | SA 返工后复审 |',
+    );
+  assert.equal(checkDesignReviewConclusion(resolved).ok, true);
+});
+test('R18: checkTechSelectionConfirmed 识别技术选型确认', () => {
+  assert.equal(checkTechSelectionConfirmed(SELFTEST_TECH_CONFIRM).ok, true);
+  assert.equal(
+    checkTechSelectionConfirmed('## 用户确认记录\n\n| 确认项 | 时间 | 用户原话摘要 |\n| --- | --- | --- |\n| 需求摘要 | 2026-01-01 | 已确认 |\n')
+      .ok,
+    false,
+  );
+});
+test('R9: hotfix_p0_impact 未声明时失败', () => {
+  const content = fixtureProcess('---\nworkflow_mode: hotfix\n---\n', {
+    'docs/design/detail-design-spec.md': '# design',
+  });
+  const r = checkHotfixP0Impact(content);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'hotfix-p0-impact-unset');
+});
+test('R9: hotfix_p0_impact=none 缺判断依据留痕时失败', () => {
+  const content = fixtureProcess(
+    [
+      '---',
+      'workflow_mode: hotfix',
+      'hotfix_p0_impact: none',
+      '---',
+      '',
+      SELFTEST_TECH_CONFIRM,
+    ].join('\n'),
+    {
+      'docs/design/detail-design-spec.md': '# design',
+    },
+  );
+  const r = checkHotfixP0Impact(content);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'hotfix-none-justification-missing');
+});
+test('R9: hotfix_p0_impact=none 且有判断依据留痕时通过', () => {
+  const content = fixtureProcess(
+    [
+      '---',
+      'workflow_mode: hotfix',
+      'hotfix_p0_impact: none',
+      '---',
+      '',
+      '## 用户确认记录',
+      '',
+      '| 确认项 | 时间 | 用户原话摘要 |',
+      '| ------ | ---- | ------------ |',
+      '| hotfix影响面 | 2026-01-01 | 已比对 requirement-list.md 全部 P0，本次修复仅涉及日志格式，不改变任何 P0 行为 |',
+      '',
+    ].join('\n'),
+    {
+      'docs/design/detail-design-spec.md': '# design',
+    },
+  );
+  assert.equal(checkHotfixP0Impact(content).ok, true);
+});
+test('R9: hotfix_p0_impact=p0 且无 R18 通过时失败', () => {
+  const content = fixtureProcess('---\nworkflow_mode: hotfix\nhotfix_p0_impact: p0\n---\n', {
+    'docs/design/detail-design-spec.md': '# design',
+  });
+  const r = checkHotfixP0Impact(content);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'hotfix-p0-needs-rr');
+});
+console.log('== R9 软性提醒：P0 影响 hotfix 的本次报告结构化章节检测（非阻塞）==');
+const HOTFIX_STRUCTURED_API_STORAGE_REPORT = [
+  '# 测试报告',
+  '',
+  '## 接口测试报告',
+  '',
+  '| 接口 | 请求方法 | 关联需求 | 关联任务包 | 是否通过 |',
+  '| ---- | -------- | -------- | ---------- | -------- |',
+  '| /api/hotfix | POST | R-001 | T-1 | 是 |',
+  '',
+  '## 存储对账记录',
+  '',
+  '| 场景类型 | 关联需求 | 关联任务包 | 存储介质 | 对账方式 | 预期存储结果 | 实际存储结果 | 是否通过 | 备注 |',
+  '| -------- | -------- | ---------- | -------- | -------- | ------------ | ------------ | -------- | ---- |',
+  '| 接口 | R-001 | T-1 | 数据库 | SELECT 1 | 有行 | 有行 | 是 | |',
+  '',
+].join('\n');
+test('R9 软性提醒: 非 hotfix 时不适用', () => {
+  const content = fixtureProcess('---\nworkflow_mode: full\n---\n');
+  assert.equal(checkHotfixP0InterfaceStorageMention(content).applicable, false);
+});
+test('R9 软性提醒: hotfix 但 hotfix_p0_impact=none 时不适用', () => {
+  const content = fixtureProcess('---\nworkflow_mode: hotfix\nhotfix_p0_impact: none\n---\n');
+  assert.equal(checkHotfixP0InterfaceStorageMention(content).applicable, false);
+});
+test('R9 软性提醒: hotfix_p0_impact=p0 但本次报告缺结构化接口/存储章节时 needsReminder=true', () => {
+  const content = fixtureProcess('---\nworkflow_mode: hotfix\nhotfix_p0_impact: p0\n---\n', {
+    'docs/test/test-report.md': '# 测试报告\n\n## 集成测试记录\n\n全部通过。\n',
+  });
+  const r = checkHotfixP0InterfaceStorageMention(content);
+  assert.equal(r.applicable, true);
+  assert.equal(r.mentionsInterface, false);
+  assert.equal(r.mentionsStorage, false);
+  assert.equal(r.needsReminder, true);
+});
+test('R9 软性提醒: 本次 test-report.md 含结构化章节真实数据行时 needsReminder=false', () => {
+  const content = fixtureProcess('---\nworkflow_mode: hotfix\nhotfix_p0_impact: p0\n---\n', {
+    'docs/test/test-report.md': HOTFIX_STRUCTURED_API_STORAGE_REPORT,
+  });
+  const r = checkHotfixP0InterfaceStorageMention(content);
+  assert.equal(r.mentionsInterface, true);
+  assert.equal(r.mentionsStorage, true);
+  assert.equal(r.needsReminder, false);
+});
+test('R9 软性提醒: 仅有关键词而无真实数据行时仍 needsReminder=true', () => {
+  const content = fixtureProcess('---\nworkflow_mode: hotfix\nhotfix_p0_impact: p0\n---\n', {
+    'docs/test/test-report.md':
+      '# 测试报告\n\n## 接口测试报告\n\n已核对接口契约无变化。\n\n## 存储对账记录\n\n已完成存储对账，结果一致。\n',
+  });
+  const r = checkHotfixP0InterfaceStorageMention(content);
+  assert.equal(r.mentionsInterface, false);
+  assert.equal(r.mentionsStorage, false);
+  assert.equal(r.needsReminder, true);
+});
+test('R9 软性提醒: 历史无关报告中的结构化章节不得抑制本次提醒', () => {
+  const content = fixtureProcess('---\nworkflow_mode: hotfix\nhotfix_p0_impact: p0\n---\n', {
+    'docs/test/old-history.md': HOTFIX_STRUCTURED_API_STORAGE_REPORT,
+    'docs/test/test-report.md': '# 测试报告\n\n## 集成测试记录\n\n全部通过。\n',
+  });
+  const r = checkHotfixP0InterfaceStorageMention(content);
+  assert.equal(r.needsReminder, true, '历史报告不得抑制本次 test-report.md 的提醒');
+});
+test('R9 软性提醒: recordHotfixP0SoftReminder 命中时写入一次性非阻塞记录', () => {
+  const content = fixtureProcess(
+    ['---', 'workflow_mode: hotfix', 'hotfix_p0_impact: p0', 'blocking: false', 'cancelled: false', '---', ''].join(
+      '\n',
+    ),
+    {
+      'docs/test/test-report.md': '# 测试报告\n\n## 集成测试记录\n\n全部通过。\n',
+    },
+  );
+  const r = recordHotfixP0SoftReminder(content);
+  assert.equal(r.ok, true);
+  assert.equal(r.reason, 'recorded');
+  const md = fs.readFileSync(process.env.HARNESS_PROCESS_PATH, 'utf8');
+  assert.match(md, /## 门禁软性提醒（非阻塞）/);
+  assert.match(md, /接口测试报告|存储对账记录/);
+  // blocking 不应被本机制置为 true（区别于 recordFailOpenEvent 的 fail-open 语义）
+  assert.doesNotMatch(md, /blocking:\s*true/);
+});
+test('R9 软性提醒: recordHotfixP0SoftReminder 幂等——同一 process.md 不重复写入', () => {
+  const content = fixtureProcess(
+    ['---', 'workflow_mode: hotfix', 'hotfix_p0_impact: p0', 'blocking: false', 'cancelled: false', '---', ''].join(
+      '\n',
+    ),
+    {
+      'docs/test/test-report.md': '# 测试报告\n\n## 集成测试记录\n\n全部通过。\n',
+    },
+  );
+  recordHotfixP0SoftReminder(content);
+  const first = fs.readFileSync(process.env.HARNESS_PROCESS_PATH, 'utf8');
+  const r2 = recordHotfixP0SoftReminder(content);
+  assert.equal(r2.ok, true);
+  assert.equal(r2.reason, 'already-recorded');
+  const second = fs.readFileSync(process.env.HARNESS_PROCESS_PATH, 'utf8');
+  assert.equal(first, second, '第二次调用不应再追加内容');
+});
+test('R9 软性提醒: 不满足条件（needsReminder=false）时不写入', () => {
+  const content = fixtureProcess(
+    ['---', 'workflow_mode: hotfix', 'hotfix_p0_impact: p0', 'blocking: false', 'cancelled: false', '---', ''].join(
+      '\n',
+    ),
+    {
+      'docs/test/test-report.md': HOTFIX_STRUCTURED_API_STORAGE_REPORT,
+    },
+  );
+  const r = recordHotfixP0SoftReminder(content);
+  assert.equal(r.ok, true);
+  assert.equal(r.reason, 'not-needed');
+  const md = fs.readFileSync(process.env.HARNESS_PROCESS_PATH, 'utf8');
+  assert.doesNotMatch(md, /## 门禁软性提醒/);
+});
+test('R9 软性提醒: cancelled 流程不写入', () => {
+  const content = fixtureProcess(
+    ['---', 'workflow_mode: hotfix', 'hotfix_p0_impact: p0', 'cancelled: true', '---', ''].join('\n'),
+    {
+      'docs/test/test-report.md': '# 测试报告\n\n全部通过。\n',
+    },
+  );
+  const r = recordHotfixP0SoftReminder(content);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'cancelled');
+});
+
+test('§8.4: recordFailOpenEvent 写入 blocking 与门禁异常事件', () => {
+  fixtureProcess(
+    [
+      '---',
+      'workflow_mode: full',
+      'blocking: false',
+      'cancelled: false',
+      '---',
+      '',
+      '## 阻塞原因',
+      '',
+      '无',
+      '',
+    ].join('\n'),
+  );
+  const r = recordFailOpenEvent('gate-selftest', 'runtime', new Error('boom'));
+  assert.equal(r.ok, true);
+  const md = fs.readFileSync(process.env.HARNESS_PROCESS_PATH, 'utf8');
+  assert.match(md, /blocking:\s*true/);
+  assert.match(md, /## 门禁异常事件/);
+  assert.match(md, /gate-selftest/);
+  assert.match(md, /boom/);
+});
+test('§8.4: cancelled 流程不写 fail-open 事件', () => {
+  fixtureProcess('---\nworkflow_mode: full\ncancelled: true\nblocking: false\n---\n');
+  const r = recordFailOpenEvent('gate-selftest', 'runtime', new Error('boom'));
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'cancelled');
 });
 
 console.log('== Finding #1：出厂 process.md 模板不得被误判为阻塞 ==');
@@ -365,6 +787,7 @@ test('R13: 设计问题清单存在未解决问题时禁止发起 development-en
       'workflow_mode: full',
       '---',
       '',
+      SELFTEST_TECH_CONFIRM,
       '## 当前分派计划',
       '',
       '| 任务包编号 | 分派角色 | 并行/串行 | 状态 |',
@@ -381,14 +804,155 @@ test('R13: 设计问题清单存在未解决问题时禁止发起 development-en
     {
       'docs/design/detail-design-spec.md': '# design',
       'docs/design/develop-task-list.md': '# tasks',
-      'docs/design/design-problem-list.md':
-        '# 设计问题清单\n\n| 检查维度 | 问题描述 | 严重等级 | 是否存在 | 是否解决 | 关联成果物 |\n| --- | --- | --- | --- | --- | --- |\n| 功能 | 问题X | 高 | 是 | 否 | |\n',
+      'docs/design/design-problem-list.md': SELFTEST_DPL_UNRESOLVED,
+      'docs/requirement/requirement-list.md': SELFTEST_REQ_LIST,
     },
   );
   const result = checkRoleDispatchGate('development-engineer');
   assert.equal(result.ok, false);
+  assert.equal(result.reason, 'unresolved-design-issues');
 });
 test('R13: 设计审核通过 + 有效分派计划时允许发起 development-engineer', () => {
+  fixtureProcess(
+    [
+      '---',
+      'workflow_mode: full',
+      '---',
+      '',
+      SELFTEST_TECH_CONFIRM,
+      '## 当前分派计划',
+      '',
+      '| 任务包编号 | 分派角色 | 并行/串行 | 状态 |',
+      '| ---------- | -------- | --------- | ---- |',
+      '| T0-1 | development-engineer | 串行 | 待开发 |',
+      '',
+      '## 待派发角色列表',
+      '',
+      '| 角色 | 说明 |',
+      '| ---- | ---- |',
+      '| development-engineer | T0-1 |',
+      '',
+    ].join('\n'),
+    {
+      'docs/design/detail-design-spec.md': '# design',
+      'docs/design/develop-task-list.md': '# tasks',
+      'docs/design/design-problem-list.md': SELFTEST_DPL_CLEAN,
+      'docs/requirement/requirement-list.md': SELFTEST_REQ_LIST,
+    },
+  );
+  const result = checkRoleDispatchGate('development-engineer');
+  assert.equal(result.ok, true);
+});
+test('R13: 缺少技术选型确认时禁止发起 development-engineer', () => {
+  fixtureProcess(
+    [
+      '---',
+      'workflow_mode: full',
+      '---',
+      '',
+      '## 用户确认记录',
+      '',
+      '| 确认项 | 时间 | 用户原话摘要 |',
+      '| ------ | ---- | ------------ |',
+      '| 需求摘要 | 2026-01-01 | 已确认 |',
+      '',
+      '## 当前分派计划',
+      '',
+      '| 任务包编号 | 分派角色 | 并行/串行 | 状态 |',
+      '| ---------- | -------- | --------- | ---- |',
+      '| T0-1 | development-engineer | 串行 | 待开发 |',
+      '',
+      '## 待派发角色列表',
+      '',
+      '| 角色 | 说明 |',
+      '| ---- | ---- |',
+      '| development-engineer | T0-1 |',
+      '',
+    ].join('\n'),
+    {
+      'docs/design/detail-design-spec.md': '# design',
+      'docs/design/develop-task-list.md': '# tasks',
+      'docs/design/design-problem-list.md': SELFTEST_DPL_CLEAN,
+      'docs/requirement/requirement-list.md': SELFTEST_REQ_LIST,
+    },
+  );
+  const result = checkRoleDispatchGate('development-engineer');
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'no-tech-selection-confirmation');
+});
+test('R13: 缺少技术选型确认时禁止发起 requirement-reviewer', () => {
+  fixtureProcess(
+    [
+      '---',
+      'workflow_mode: full',
+      '---',
+      '',
+      '## 用户确认记录',
+      '',
+      '| 确认项 | 时间 | 用户原话摘要 |',
+      '| ------ | ---- | ------------ |',
+      '| 需求摘要 | 2026-01-01 | 已确认 |',
+      '',
+    ].join('\n'),
+    {
+      'docs/design/detail-design-spec.md': '# design',
+      'docs/design/develop-task-list.md': '# tasks',
+    },
+  );
+  const result = checkRoleDispatchGate('requirement-reviewer');
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'no-tech-selection-confirmation');
+});
+
+console.log('== R13：quality-engineer 按任务包核验开发线执行完成 ==');
+function makeQeDispatchProcess({ progressRows, planRole = 'quality-engineer', planPack = 'T0-1', pending = true }) {
+  const pendingBlock = pending
+    ? [
+        '## 待派发角色列表',
+        '',
+        '| 角色 | 说明 |',
+        '| ---- | ---- |',
+        `| quality-engineer | ${planPack} |`,
+        '',
+      ].join('\n')
+    : '';
+  return [
+    '---',
+    'workflow_mode: full',
+    '---',
+    '',
+    '## 当前分派计划',
+    '',
+    '| 任务包编号 | 分派角色 | 并行/串行 | 状态 |',
+    '| ---------- | -------- | --------- | ---- |',
+    `| ${planPack} | ${planRole} | 串行 | 待 QE |`,
+    '',
+    pendingBlock,
+    '## 进度列表',
+    '',
+    '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+    '| ----------- | -------- | ---- | ---- |',
+    ...progressRows,
+    '',
+  ].join('\n');
+}
+test('R13 QE: extractQeDispatchTaskPacks 从分派计划提取任务包', () => {
+  const content = makeQeDispatchProcess({
+    progressRows: ['| 开发工程师 | T0-1 | 执行完成 | |'],
+  });
+  assert.deepEqual(extractQeDispatchTaskPacks(content), ['T0-1']);
+});
+test('R13 QE: 开发线正在执行时拒绝发起 quality-engineer', () => {
+  fixtureProcess(
+    makeQeDispatchProcess({
+      progressRows: ['| 开发工程师 | T0-1 | 正在执行 | |'],
+    }),
+  );
+  const r = checkRoleDispatchGate('quality-engineer');
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'qe-dev-line-not-complete');
+});
+test('R13 QE: 分派计划缺 QE 任务包编号时拒绝', () => {
   fixtureProcess(
     [
       '---',
@@ -407,16 +971,61 @@ test('R13: 设计审核通过 + 有效分派计划时允许发起 development-en
       '| ---- | ---- |',
       '| development-engineer | T0-1 |',
       '',
+      '## 进度列表',
+      '',
+      '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+      '| ----------- | -------- | ---- | ---- |',
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '',
     ].join('\n'),
-    {
-      'docs/design/detail-design-spec.md': '# design',
-      'docs/design/develop-task-list.md': '# tasks',
-      'docs/design/design-problem-list.md':
-        '# 设计问题清单\n\n| 检查维度 | 问题描述 | 严重等级 | 是否存在 | 是否解决 | 关联成果物 |\n| --- | --- | --- | --- | --- | --- |\n| 功能 | 无 | 低 | 否 | | |\n',
-    },
   );
-  const result = checkRoleDispatchGate('development-engineer');
-  assert.equal(result.ok, true);
+  const r = checkRoleDispatchGate('quality-engineer');
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'qe-missing-task-packs');
+});
+test('R13 QE: 对应开发线执行完成且分派含任务包时允许发起 quality-engineer', () => {
+  fixtureProcess(
+    makeQeDispatchProcess({
+      progressRows: ['| 开发工程师 | T0-1 | 执行完成 | |'],
+    }),
+  );
+  const r = checkRoleDispatchGate('quality-engineer');
+  assert.equal(r.ok, true);
+  assert.equal(getDevLineStatusForTaskPack(fs.readFileSync(process.env.HARNESS_PROCESS_PATH, 'utf8'), 'T0-1'), 'complete');
+});
+test('R13 QE: 多任务包时任一未完成即拒绝', () => {
+  fixtureProcess(
+    [
+      '---',
+      'workflow_mode: full',
+      '---',
+      '',
+      '## 当前分派计划',
+      '',
+      '| 任务包编号 | 分派角色 | 并行/串行 | 状态 |',
+      '| ---------- | -------- | --------- | ---- |',
+      '| T0-1 | quality-engineer | 并行 | 待 QE |',
+      '| T0-2 | quality-engineer | 并行 | 待 QE |',
+      '',
+      '## 待派发角色列表',
+      '',
+      '| 角色 | 说明 |',
+      '| ---- | ---- |',
+      '| quality-engineer | T0-1 T0-2 批量审查 |',
+      '',
+      '## 进度列表',
+      '',
+      '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
+      '| ----------- | -------- | ---- | ---- |',
+      '| 开发工程师 | T0-1 | 执行完成 | |',
+      '| 开发工程师 | T0-2 | 正在执行 | |',
+      '',
+    ].join('\n'),
+  );
+  const r = checkRoleDispatchGate('quality-engineer');
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'qe-dev-line-not-complete');
+  assert.match(r.message, /T0-2/);
 });
 
 console.log('== R14：开发窗口批次接口测试报告章节校验 ==');
@@ -431,7 +1040,7 @@ const R14_PROGRESS_BATCH_DONE = [
   '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
   '| ----------- | -------- | ---- | ---- |',
   '| 开发工程师 | T0-1 | 执行完成 | |',
-  '| 质量保障工程师 | T0-1 | 执行完成 | |',
+  '| 质量工程师 | T0-1 | 执行完成 | |',
   '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
   '',
 ].join('\n');
@@ -535,7 +1144,7 @@ test('R14: hotfix 折叠通道不并入接口测试报告判据（batchTestCompl
       '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
       '| ----------- | -------- | ---- | ---- |',
       '| 开发工程师 | T-1 | 执行完成 | |',
-      '| 质量保障工程师 | T-1 | 执行完成 | |',
+      '| 质量工程师 | T-1 | 执行完成 | |',
       '',
     ].join('\n'),
   );
@@ -734,10 +1343,10 @@ test('R17: 多批次进度任务包须全部被对账行覆盖（仅覆盖首批
     '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
     '| ----------- | -------- | ---- | ---- |',
     '| 开发工程师 | T0-1 | 执行完成 | |',
-    '| 质量保障工程师 | T0-1 | 执行完成 | |',
+    '| 质量工程师 | T0-1 | 执行完成 | |',
     '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
     '| 开发工程师 | T0-2 | 执行完成 | |',
-    '| 质量保障工程师 | T0-2 | 执行完成 | |',
+    '| 质量工程师 | T0-2 | 执行完成 | |',
     '| 测试工程师 | 批次集成测试 T0-2 | 执行完成 | |',
     '',
   ].join('\n');
@@ -760,10 +1369,10 @@ test('R17: 多批次任务包均有对账行时校验通过', () => {
     '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
     '| ----------- | -------- | ---- | ---- |',
     '| 开发工程师 | T0-1 | 执行完成 | |',
-    '| 质量保障工程师 | T0-1 | 执行完成 | |',
+    '| 质量工程师 | T0-1 | 执行完成 | |',
     '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
     '| 开发工程师 | T0-2 | 执行完成 | |',
-    '| 质量保障工程师 | T0-2 | 执行完成 | |',
+    '| 质量工程师 | T0-2 | 执行完成 | |',
     '| 测试工程师 | 批次集成测试 T0-2 | 执行完成 | |',
     '',
   ].join('\n');
@@ -846,10 +1455,10 @@ test('R17: 真实对账行 + 无写入任务包「不适用」留痕时校验通
     '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
     '| ----------- | -------- | ---- | ---- |',
     '| 开发工程师 | T0-1 | 执行完成 | |',
-    '| 质量保障工程师 | T0-1 | 执行完成 | |',
+    '| 质量工程师 | T0-1 | 执行完成 | |',
     '| 测试工程师 | 批次集成测试 T0-1 | 执行完成 | |',
     '| 开发工程师 | T0-2 | 执行完成 | |',
-    '| 质量保障工程师 | T0-2 | 执行完成 | |',
+    '| 质量工程师 | T0-2 | 执行完成 | |',
     '| 测试工程师 | 批次集成测试 T0-2 | 执行完成 | |',
     '',
   ].join('\n');
@@ -1005,7 +1614,7 @@ test('R15: computeLintGate —— 有命令且退出码 0 才 gatePassed', () =>
 });
 
 console.log('== R15：编程规范（lint）门禁机读判据（含双要素豁免）==');
-const R15_QA_DONE = [
+const R15_QE_DONE = [
   '---',
   'workflow_mode: full',
   'iterationType: greenfield',
@@ -1016,7 +1625,7 @@ const R15_QA_DONE = [
   '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
   '| ----------- | -------- | ---- | ---- |',
   '| 开发工程师 | T0-1 | 执行完成 | |',
-  '| 质量保障工程师 | T0-1 | 执行完成 | |',
+  '| 质量工程师 | T0-1 | 执行完成 | |',
   '',
 ].join('\n');
 const LINT_PASS = { gatePassed: true, reason: 'passed', stack: 'node', command: 'npm run lint', exitCode: 0 };
@@ -1039,32 +1648,32 @@ const LINT_EXEMPT_CONFIRM_PROCESS = [
   '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
   '| ----------- | -------- | ---- | ---- |',
   '| 开发工程师 | T0-1 | 执行完成 | |',
-  '| 质量保障工程师 | T0-1 | 执行完成 | |',
+  '| 质量工程师 | T0-1 | 执行完成 | |',
   '',
 ].join('\n');
 
 snapshotLintResult();
 test('R15: 无 lint 机读产物时 checkLintClean 失败、lintPassed=false', () => {
-  const content = fixtureProcess(R15_QA_DONE);
+  const content = fixtureProcess(R15_QE_DONE);
   clearLintResult();
   assert.equal(readLintResult(), null);
   assert.equal(checkLintClean().ok, false);
   assert.equal(parseWorkflowState(content).lintPassed, false);
 });
 test('R15: lint gatePassed=true 时 checkLintClean 通过、lintPassed=true', () => {
-  const content = fixtureProcess(R15_QA_DONE);
+  const content = fixtureProcess(R15_QE_DONE);
   writeLintResult(LINT_PASS);
   assert.equal(checkLintClean().ok, true);
   assert.equal(parseWorkflowState(content).lintPassed, true);
 });
 test('R15: lint gatePassed=false（lint 失败）时 checkLintClean 失败、lintPassed=false', () => {
-  const content = fixtureProcess(R15_QA_DONE);
+  const content = fixtureProcess(R15_QE_DONE);
   writeLintResult(LINT_FAIL);
   assert.equal(checkLintClean().ok, false);
   assert.equal(parseWorkflowState(content).lintPassed, false);
 });
 test('R15: 仅架构师声明 n/a 但无用户确认 → 不豁免', () => {
-  const content = fixtureProcess(R15_QA_DONE, { 'docs/design/gated-lint-na.json': LINT_NA_GATED });
+  const content = fixtureProcess(R15_QE_DONE, { 'docs/design/gated-lint-na.json': LINT_NA_GATED });
   process.env.HARNESS_GATED_ARTIFACTS_PATH = 'test-results/.gate-selftest/docs/design/gated-lint-na.json';
   clearLintResult();
   assert.equal(isLintExempt(content), false);
@@ -1118,7 +1727,7 @@ test('R16: computeStaticScanGate —— 两项子检查均通过才 gatePassed',
 });
 
 console.log('== R16：静态代码质量门禁机读判据（含双要素豁免，重复代码/安全扫描独立）==');
-const R16_QA_DONE = R15_QA_DONE;
+const R16_QE_DONE = R15_QE_DONE;
 const STATIC_SCAN_PASS = {
   gatePassed: true,
   duplication: { gatePassed: true, reason: 'passed', command: 'jscpd .', exitCode: 0 },
@@ -1153,7 +1762,7 @@ const DUP_EXEMPT_CONFIRM_PROCESS = [
   '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
   '| ----------- | -------- | ---- | ---- |',
   '| 开发工程师 | T0-1 | 执行完成 | |',
-  '| 质量保障工程师 | T0-1 | 执行完成 | |',
+  '| 质量工程师 | T0-1 | 执行完成 | |',
   '',
 ].join('\n');
 const SECURITY_EXEMPT_CONFIRM_PROCESS = [
@@ -1173,40 +1782,40 @@ const SECURITY_EXEMPT_CONFIRM_PROCESS = [
   '| 角色/开发线 | 任务名称 | 状态 | 说明 |',
   '| ----------- | -------- | ---- | ---- |',
   '| 开发工程师 | T0-1 | 执行完成 | |',
-  '| 质量保障工程师 | T0-1 | 执行完成 | |',
+  '| 质量工程师 | T0-1 | 执行完成 | |',
   '',
 ].join('\n');
 
 snapshotStaticScanResult();
 test('R16: 无静态扫描机读产物时 checkStaticScanClean 失败、staticScanPassed=false', () => {
-  const content = fixtureProcess(R16_QA_DONE);
+  const content = fixtureProcess(R16_QE_DONE);
   clearStaticScanResult();
   assert.equal(readStaticScanResult(), null);
   assert.equal(checkStaticScanClean().ok, false);
   assert.equal(parseWorkflowState(content).staticScanPassed, false);
 });
 test('R16: 两项子检查均 gatePassed=true 时 checkStaticScanClean 通过、staticScanPassed=true', () => {
-  const content = fixtureProcess(R16_QA_DONE);
+  const content = fixtureProcess(R16_QE_DONE);
   writeStaticScanResult(STATIC_SCAN_PASS);
   assert.equal(checkStaticScanClean().ok, true);
   assert.equal(parseWorkflowState(content).staticScanPassed, true);
 });
 test('R16: 重复代码检测未通过时 checkStaticScanClean 失败、staticScanPassed=false', () => {
-  const content = fixtureProcess(R16_QA_DONE);
+  const content = fixtureProcess(R16_QE_DONE);
   writeStaticScanResult(STATIC_SCAN_DUP_FAIL);
   assert.equal(checkStaticScanClean().ok, false);
   assert.equal(checkStaticScanClean().reason, 'dup-check-not-passed');
   assert.equal(parseWorkflowState(content).staticScanPassed, false);
 });
 test('R16: 安全扫描未通过时 checkStaticScanClean 失败、staticScanPassed=false', () => {
-  const content = fixtureProcess(R16_QA_DONE);
+  const content = fixtureProcess(R16_QE_DONE);
   writeStaticScanResult(STATIC_SCAN_SECURITY_FAIL);
   assert.equal(checkStaticScanClean().ok, false);
   assert.equal(checkStaticScanClean().reason, 'security-scan-not-passed');
   assert.equal(parseWorkflowState(content).staticScanPassed, false);
 });
 test('R16: 仅架构师声明 dupCheckApplicability n/a 但无用户确认 → 不豁免', () => {
-  const content = fixtureProcess(R16_QA_DONE, { 'docs/design/gated-dup-na.json': DUP_NA_GATED });
+  const content = fixtureProcess(R16_QE_DONE, { 'docs/design/gated-dup-na.json': DUP_NA_GATED });
   process.env.HARNESS_GATED_ARTIFACTS_PATH = 'test-results/.gate-selftest/docs/design/gated-dup-na.json';
   clearStaticScanResult();
   assert.equal(isDupCheckExempt(content), false);

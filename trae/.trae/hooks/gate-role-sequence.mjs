@@ -19,15 +19,22 @@
  */
 const GATED_ROLES = new Set([
   'system-architect',
-  'product-manager',
+  'requirement-reviewer',
   'development-engineer',
-  'quality-assurance-engineer',
+  'quality-engineer',
   'test-engineer',
 ]);
 
 function failOpenAllow(context, err) {
   if (err) {
     process.stderr.write(`[gate-role-sequence] fail-open (${context}): ${err?.message ?? err}\n`);
+  }
+  if (globalThis.__gateLib?.recordFailOpenEvent) {
+    try {
+      globalThis.__gateLib.recordFailOpenEvent('gate-role-sequence', context, err);
+    } catch {
+      // 写日志失败不影响 fail-open 放行
+    }
   }
   process.stdout.write(JSON.stringify({ permission: 'allow' }));
   process.exit(0);
@@ -58,10 +65,12 @@ async function main() {
   }
 
   const { readStdinJsonAsync, checkRoleDispatchGate } = lib;
+  globalThis.__gateLib = lib;
 
   try {
     const input = await readStdinJsonAsync();
-    const role = extractTargetRole(input);
+    const rawRole = extractTargetRole(input);
+    const role = lib.normalizeRoleSlug(rawRole) ?? rawRole;
 
     if (!role || !GATED_ROLES.has(role)) {
       failOpenAllow('not-gated-role');

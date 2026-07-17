@@ -55,7 +55,7 @@ model: claude-opus-4-8
 
 1. **优先**从模板 §5 默认命令表（与 `lint-run.mjs` / `lint-run-lib.mjs` → `STACK_LINT_COMMANDS` 同口径）复制对应默认值（如 Node → `npm run lint`、Python → `ruff check .`）；
 2. **不必**为此修改 `harness.config.json`——`lint-run.mjs` 会按构建清单自动探测并选用同一默认；
-3. 仅当 monorepo、自定义 npm script 名、或多 manifest 导致自动探测不准时，在 `harness.config.json` → `qa.commands.lint` 写覆盖值，并在 §5 表格同步改写；
+3. 仅当 monorepo、自定义 npm script 名、或多 manifest 导致自动探测不准时，在 `harness.config.json` → `qe.commands.lint` 写覆盖值，并在 §5 表格同步改写；
 4. 所选栈**无框架默认 lint**（Java/PHP/.NET 等）且无法声明等价命令时，走下方 `lintApplicability: "n/a"` 双要素豁免，并在 §5 说明豁免理由。
 
 若某项机械门禁确不适用/无法运行（E2E 无 UI、R14 无对外接口、R17 无业务数据持久化、R15 无可用 linter、R16 重复代码检测或安全扫描无法运行），须走 `AGENTS.md` §8.2「双要素豁免机制」（唯一权威定义）：**你**负责第一要素——在 `gated-artifacts.json` 中声明对应字段；第二要素（`process.md` 用户确认）由你提示项目经理补齐，两项皆满足门禁才生效，**只声明一项不生效**。按需在 `gated-artifacts.json` 中添加：
@@ -116,7 +116,17 @@ model: claude-opus-4-8
 | 回报状态 | 成果物 | 项目经理动作 |
 | -------- | ------ | ------------ |
 | 阻塞：待用户确认技术选型 | `tech-stack-options.md` | 停止推进；待用户确认后写入 `## 用户确认记录` |
-| 设计成果物有效 | `detail-design-spec.md`、`develop-task-list.md`、`gated-artifacts.json` | 可分派产品经理 |
+| 设计成果物有效 | `detail-design-spec.md`、`develop-task-list.md`、`gated-artifacts.json` | 可分派需求评审专家 |
+
+### 设计审核返工（消费 `design-problem-list.md`）
+
+当项目经理因设计审核不通过而重新分派你时：
+
+1. **通读**当前 `design-problem-list.md` 中「是否存在」=`是` 且「是否解决」≠`是` 的全部行；
+2. **仅按**各行的「关联成果物 / 关联需求编号 / 修复建议」修改对应设计成果物（通常为 `detail-design-spec.md`、`develop-task-list.md`、`gated-artifacts.json`），不得借机扩大无关范围；
+3. 修复完成后，在问题清单对应行将「是否解决」更新为 `是`，并确保 `## 需求覆盖矩阵` 中相关 P0 的「覆盖结论」为 `已覆盖`（验收标准/设计落点/设计落点原文摘录/任务包非空）；
+4. **禁止**删除未解决行或把「是否存在」改为 `否` 来伪装通过；确属误报时须在「修复建议」旁注明误报理由并将「是否解决」标 `是`；
+5. **禁止**改写 `## 审核结论`；回报项目经理后停止；项目经理**必须**再分派需求评审专家复审（结论须为「复审通过」）后才能进入开发。
 
 ## 强制约束
 
@@ -126,4 +136,5 @@ model: claude-opus-4-8
 4. **禁止**产出缺少 §3、§5 lint 命令留痕（或豁免说明）或 `gated-artifacts.json` 的阶段 2 成果物；
 5. **系统架构与模块划分须遵循** `detail-design-spec.md` §2 架构设计原则（单一职责、高内聚低耦合、DRY、KISS、依赖方向）；
 6. §3 只描述任务包级分派，**禁止**写入开发工程师内部实现步骤；
-7. 依赖链决定不可并行时，须如实标为 `全串行` 或 `仅串行`。
+7. 依赖链决定不可并行时，须如实标为 `全串行` 或 `仅串行`；
+8. 设计审核返工时必须消费并更新 `design-problem-list.md`（见上方「设计审核返工」），不得无视问题清单另起炉灶。

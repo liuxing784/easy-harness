@@ -77,14 +77,15 @@ const DEFAULT_CONFIG = {
       'Microsoft\\.VisualStudio\\.',
     ],
   },
-  qa: {
+  qe: {
     commands: {},
   },
 };
 
 const ROLE_ALIASES = {
   '开发工程师': ['开发工程师', 'development-engineer'],
-  '质量保障工程师': ['质量保障工程师', 'quality-assurance-engineer'],
+  // 现行缩写 QE
+  '质量工程师': ['质量工程师', 'quality-engineer', 'QE'],
   '测试工程师': ['测试工程师', 'test-engineer'],
 };
 
@@ -297,7 +298,7 @@ export function loadHarnessConfig() {
       const parsed = JSON.parse(fs.readFileSync(HARNESS_CONFIG, 'utf8'));
       _configCache = { ...DEFAULT_CONFIG, ...parsed };
       _configCache.gatedPaths = { ...DEFAULT_CONFIG.gatedPaths, ...parsed.gatedPaths };
-      _configCache.qa = { ...DEFAULT_CONFIG.qa, ...parsed.qa };
+      _configCache.qe = { ...DEFAULT_CONFIG.qe, ...parsed.qe };
       return _configCache;
     } catch {
       /* fall through */
@@ -806,9 +807,9 @@ export function readE2eResult(scope) {
   }
 }
 
-/** R15：读取 QA 阶段编程规范（lint）门禁机读结果（lint-run.mjs 产出），缺失/解析失败返回 null */
+/** R15：读取 QE 阶段编程规范（lint）门禁机读结果（lint-run.mjs 产出），缺失/解析失败返回 null */
 export function readLintResult() {
-  const resultPath = path.join(PROJECT_ROOT, 'test-results/qa', '.lint-result.json');
+  const resultPath = path.join(PROJECT_ROOT, 'test-results/qe', '.lint-result.json');
   if (!fs.existsSync(resultPath)) return null;
   try {
     return JSON.parse(fs.readFileSync(resultPath, 'utf8'));
@@ -817,9 +818,9 @@ export function readLintResult() {
   }
 }
 
-/** R16：读取 QA 阶段静态代码质量门禁机读结果（static-scan-run.mjs 产出），缺失/解析失败返回 null */
+/** R16：读取 QE 阶段静态代码质量门禁机读结果（static-scan-run.mjs 产出），缺失/解析失败返回 null */
 export function readStaticScanResult() {
-  const resultPath = path.join(PROJECT_ROOT, 'test-results/qa', '.static-scan-result.json');
+  const resultPath = path.join(PROJECT_ROOT, 'test-results/qe', '.static-scan-result.json');
   if (!fs.existsSync(resultPath)) return null;
   try {
     return JSON.parse(fs.readFileSync(resultPath, 'utf8'));
@@ -890,7 +891,718 @@ export function checkRequirementReady() {
   return { ok: true, reason: 'checked' };
 }
 
-/** R13：设计成果物是否就绪（供发起 product-manager 设计审核 / development-engineer 前机械校验） */
+/** R18：设计问题清单审核问题表必填表头 */
+export const REQUIRED_DPL_HEADERS = [
+  '检查维度',
+  '问题描述',
+  '严重等级',
+  '是否存在',
+  '是否解决',
+  '关联成果物',
+  '关联需求编号',
+  '建议责任角色',
+  '修复建议',
+];
+
+/** R18：设计审核 12 维（须全部出现在「检查维度」列） */
+export const REQUIRED_DESIGN_REVIEW_DIMENSIONS = [
+  '需求覆盖度',
+  '目标达成性',
+  '功能',
+  '体验',
+  '可行性',
+  'MVP 范围',
+  '任务可执行性',
+  '流程合规性',
+  '架构设计原则',
+  '成果物完整性',
+  '测试可执行性',
+  '安全与合规',
+];
+
+const KNOWN_FIX_ROLE_RE =
+  /^(system-architect|requirements-analyst|requirement-reviewer|project-manager|development-engineer|quality-engineer|test-engineer|系统架构师|需求分析师|需求评审专家|项目经理|开发工程师|质量工程师|测试工程师|QE)$/i;
+
+/** 归一化需求编号：R-001（去前导零后至少 3 位） */
+export function normalizeRequirementId(raw) {
+  const m = String(raw ?? '')
+    .trim()
+    .match(/^R-0*(\d+)$/i);
+  if (!m) return null;
+  return `R-${m[1].padStart(3, '0')}`;
+}
+
+/** 从 requirement-list.md 提取全部 P0 需求编号 */
+export function extractP0RequirementIds(content) {
+  if (!content) return [];
+  const ids = [];
+  for (const table of parseMarkdownTables(content)) {
+    const idIdx = table.headers.findIndex((h) => /需求编号/.test(h));
+    const prioIdx = table.headers.findIndex((h) => /优先级/.test(h));
+    if (idIdx === -1 || prioIdx === -1) continue;
+    for (const row of table.rows) {
+      const id = normalizeRequirementId(row[idIdx]);
+      const prio = (row[prioIdx] ?? '').trim();
+      if (id && /^P0$/i.test(prio)) ids.push(id);
+    }
+  }
+  return [...new Set(ids)];
+}
+
+function normalizeDimensionName(raw) {
+  const s = String(raw ?? '').trim();
+  if (/^MVP(\s*范围)?$/i.test(s)) return 'MVP 范围';
+  return s;
+}
+
+function isBlankOrPlaceholder(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return true;
+  if (/^(高\/中\/低|已覆盖\/未覆盖)$/i.test(s)) return true;
+  if (/^Given\/When\/Then/i.test(s)) return true;
+  return false;
+}
+
+/** 从任务包单元格提取 T 编号（如 T0-1、T-DOC-1） */
+function extractTaskPackIds(raw) {
+  const matches = String(raw ?? '').match(/\bT[\w./-]+\b/g);
+  return matches ? [...new Set(matches)] : [];
+}
+
+/**
+ * 设计落点是否可在详细设计中解析到（stub 设计文件跳过）。
+ * 有 §N 引用时，要求设计正文出现对应章节痕迹。
+ */
+function designAnchorResolvable(anchor, designContent) {
+  if (!designContent) return true;
+  const body = designContent.replace(/^#.+$/m, '').trim();
+  if (!body) return true;
+  const sectionMatch = String(anchor ?? '').match(/§\s*([\w.]+)/);
+  if (!sectionMatch) return true;
+  const n = sectionMatch[1];
+  if (designContent.includes(`§${n}`)) return true;
+  if (new RegExp(`^#+\\s*${n}([.\\s]|$)`, 'm').test(designContent)) return true;
+  if (designContent.includes(`第${n}`)) return true;
+  return false;
+}
+
+/** 任务包编号是否出现在开发任务清单（清单本身无任何 T 编号时视为 stub，跳过） */
+function taskPackExistsInList(taskId, taskListContent) {
+  if (!taskListContent) return true;
+  if (!/\bT[\w./-]+\b/.test(taskListContent)) return true;
+  return taskListContent.includes(taskId);
+}
+
+/**
+ * R18：用户确认记录是否含技术选型/技术栈确认行。
+ */
+export function hasTechSelectionConfirmation(content) {
+  const body = extractSection(content, '用户确认记录');
+  if (!body) return false;
+  for (const line of body.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('|')) continue;
+    if (/^\|[\s|:-]+\|?$/.test(t)) continue;
+    if (/确认项|时间|用户原话/.test(t) && /\|.*\|.*\|/.test(t) && !/技术/.test(t)) continue;
+    if (/技术选型|技术栈/.test(t) && /确认|采用|同意|选定|已选/.test(t)) return true;
+  }
+  return false;
+}
+
+/** R18：技术选型确认机读（供 RR / DE 前置） */
+export function checkTechSelectionConfirmed(content) {
+  const md = content ?? readProcessMd() ?? '';
+  if (!hasTechSelectionConfirmation(md)) {
+    return {
+      ok: false,
+      reason: 'no-tech-selection-confirmation',
+      message:
+        'R18：process.md「## 用户确认记录」缺少技术选型/技术栈确认行，不得发起设计审核或开发。',
+    };
+  }
+  return { ok: true, reason: 'checked' };
+}
+
+/**
+ * R18：是否存在「曾登记为问题且已标记解决」的行（是否存在=是 且 是否解决=是）。
+ * 用于强制 SA 返工后须经 RR 复审（审核结论须为「复审通过」）。
+ */
+export function hasResolvedDesignIssues(content) {
+  const tables = parseMarkdownTables(content);
+  for (const table of tables) {
+    const existIdx = table.headers.findIndex((h) => /是否存在/.test(h));
+    const resolvedIdx = table.headers.findIndex((h) => /是否解决/.test(h));
+    if (existIdx === -1 || resolvedIdx === -1) continue;
+    for (const row of table.rows) {
+      const exists = (row[existIdx] ?? '').trim();
+      const resolved = (row[resolvedIdx] ?? '').trim();
+      if (/^是$/.test(exists) && /^是$/.test(resolved)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * R18：审核结论机读——须有「## 审核结论」；最新结论为「通过」或「复审通过」；
+ * 若存在已解决的设计问题行，最新结论必须为「复审通过」。
+ */
+export function checkDesignReviewConclusion(dplContent) {
+  const section = extractSection(dplContent, '审核结论');
+  if (section == null) {
+    return {
+      ok: false,
+      reason: 'missing-review-conclusion',
+      message: 'R18：设计问题清单缺少「## 审核结论」章节（首次通过填「通过」；返工后须「复审通过」）。',
+    };
+  }
+  const tables = parseMarkdownTables(section);
+  const table = tables.find((t) => t.headers.some((h) => /结论/.test(h)));
+  if (!table || table.rows.length === 0) {
+    return {
+      ok: false,
+      reason: 'missing-review-conclusion-rows',
+      message: 'R18：「## 审核结论」缺少含「结论」列的数据行。',
+    };
+  }
+  const verdictIdx = table.headers.findIndex((h) => /^结论$/.test(h.trim()) || /结论/.test(h));
+  const last = table.rows[table.rows.length - 1];
+  const verdict = (last[verdictIdx] ?? '').trim();
+  const needsRereview = hasResolvedDesignIssues(dplContent);
+  if (needsRereview) {
+    if (!/^复审通过$/.test(verdict)) {
+      return {
+        ok: false,
+        reason: 'rereview-required',
+        message:
+          'R18：设计问题清单存在已解决的问题行，须由 requirement-reviewer 复审并将「## 审核结论」最新结论标为「复审通过」后，方可进入开发。',
+      };
+    }
+  } else if (!/^(通过|复审通过)$/.test(verdict)) {
+    return {
+      ok: false,
+      reason: 'review-not-passed',
+      message: `R18：「## 审核结论」最新结论须为「通过」或「复审通过」（当前：${verdict || '空'}）。`,
+    };
+  }
+  return { ok: true, reason: needsRereview ? 'rereview-passed' : 'checked' };
+}
+
+/**
+ * R9：声明 hotfix_p0_impact:none 时，用户确认记录是否含「hotfix影响面」判断依据行。
+ * 仅校验关键词存在性，不校验语义真实性（与技术选型确认同构）。
+ */
+export function hasHotfixNoneJustification(content) {
+  const body = extractSection(content, '用户确认记录');
+  if (!body) return false;
+  for (const line of body.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('|')) continue;
+    if (/^\|[\s|:-]+\|?$/.test(t)) continue;
+    if (/确认项|时间|用户原话/.test(t) && /\|.*\|.*\|/.test(t) && !/hotfix|热修/i.test(t)) {
+      continue;
+    }
+    if (/hotfix影响面|hotfix\s*影响面|热修影响面/i.test(t)) return true;
+  }
+  return false;
+}
+
+/**
+ * R9 扩展：hotfix 须声明 hotfix_p0_impact；声明 none 时须留痕判断依据；
+ * 若为 p0/yes，则须 R18 设计审核清洁（含复审结论）。
+ */
+export function checkHotfixP0Impact(content) {
+  const fm = parseProcessFrontmatter(content);
+  if (fm.workflow_mode !== 'hotfix') {
+    return { ok: true, reason: 'not-hotfix' };
+  }
+  const raw = String(fm.hotfix_p0_impact ?? '')
+    .trim()
+    .toLowerCase();
+  if (!raw) {
+    return {
+      ok: false,
+      reason: 'hotfix-p0-impact-unset',
+      message:
+        'R9：hotfix 须在 process.md frontmatter 声明 hotfix_p0_impact: none|p0（影响 P0 行为时为 p0）。',
+    };
+  }
+  if (!/^(none|no|p0|yes)$/.test(raw)) {
+    return {
+      ok: false,
+      reason: 'hotfix-p0-impact-invalid',
+      message: `R9：hotfix_p0_impact 取值无效（${raw}），仅允许 none|p0。`,
+    };
+  }
+  if (/^(none|no)$/.test(raw)) {
+    if (!hasHotfixNoneJustification(content)) {
+      return {
+        ok: false,
+        reason: 'hotfix-none-justification-missing',
+        message:
+          'R9：声明 hotfix_p0_impact:none 时须在 ## 用户确认记录 补一行判断依据（含关键词「hotfix影响面」）。',
+      };
+    }
+  }
+  if (/^(p0|yes)$/.test(raw)) {
+    const clean = checkDesignReviewClean();
+    if (!clean.ok) {
+      return {
+        ok: false,
+        reason: 'hotfix-p0-needs-rr',
+        message:
+          clean.message ??
+          'R9：hotfix 影响 P0 行为时须完成需求评审（R18 通过）或改走 workflow_mode: full。',
+      };
+    }
+  }
+  return { ok: true, reason: /^(p0|yes)$/.test(raw) ? 'p0-reviewed' : 'no-p0-impact' };
+}
+
+/**
+ * 收集「本次 hotfix」相关的测试报告路径（不扫描整个 docs/test/ 目录）：
+ * 1. process.md 正文显式引用的 `docs/.../test/*.md` / `test/*.md`；
+ * 2. 若无引用，回退到规范名 `test-report.md`（存在时）。
+ * 历史无关报告中的关键词/章节不得抑制本次软性提醒。
+ */
+function collectCurrentHotfixTestReportPaths(content) {
+  const docsBase = getActiveDocsBase();
+  const testDir = path.join(docsBase, 'test');
+  const names = new Set();
+  const refs =
+    String(content ?? '').match(
+      /(?:docs\/(?:[\w.-]+\/)?test\/|\/test\/|(?:^|[\s(`])test\/)([\w./-]+\.md)/gi,
+    ) ?? [];
+  for (const ref of refs) {
+    const m = ref.match(/([\w./-]+\.md)$/i);
+    if (m) names.add(path.basename(m[1]));
+  }
+  if (names.size === 0 && fs.existsSync(path.join(testDir, 'test-report.md'))) {
+    names.add('test-report.md');
+  }
+  const paths = [];
+  for (const name of names) {
+    const abs = path.join(testDir, name);
+    if (fs.existsSync(abs)) paths.push(abs);
+  }
+  return paths;
+}
+
+/**
+ * R9 软性提醒（非阻塞，唯一权威定义见 AGENTS.md §5 R9 脚注第 4 条）：
+ * P0 影响的 hotfix 走 R11 折叠通道时，R14（接口测试）/R17（存储对账）机读硬门禁
+ * 明确不并入该通道（仅约束 full 模式开发窗口批次阶段），但高风险的 P0 行为变更仍
+ * 应在**本次**测试报告中留痕接口/存储相关验证结果。本函数仅对**本次 hotfix 测试报告**
+ * （process.md 引用或规范名 `test-report.md`）做结构化章节校验——须含非空
+ * 「## 接口测试报告」「## 存储对账记录」真实数据行（同 R14/R17 的 `sectionHasDataRow`），
+ * **不做全目录关键词匹配**；缺失时供 `recordHotfixP0SoftReminder` 写入一次性提醒，
+ * **不阻塞流程、不影响 gatePassed/finalTestComplete**。
+ */
+export function checkHotfixP0InterfaceStorageMention(content) {
+  const fm = parseProcessFrontmatter(content);
+  if (fm.workflow_mode !== 'hotfix') return { applicable: false, reason: 'not-hotfix' };
+  const raw = String(fm.hotfix_p0_impact ?? '').trim().toLowerCase();
+  if (!/^(p0|yes)$/.test(raw)) return { applicable: false, reason: 'no-p0-impact' };
+
+  const reportPaths = collectCurrentHotfixTestReportPaths(content);
+  let mentionsInterface = false;
+  let mentionsStorage = false;
+  for (const reportPath of reportPaths) {
+    let reportContent = '';
+    try {
+      reportContent = fs.readFileSync(reportPath, 'utf8');
+    } catch {
+      continue;
+    }
+    if (sectionHasDataRow(reportContent, '接口测试报告')) mentionsInterface = true;
+    if (sectionHasDataRow(reportContent, '存储对账记录')) mentionsStorage = true;
+  }
+  return {
+    applicable: true,
+    mentionsInterface,
+    mentionsStorage,
+    reportPaths,
+    needsReminder: !mentionsInterface || !mentionsStorage,
+  };
+}
+
+const HOTFIX_P0_SOFT_REMINDER_MARKER = '<!-- hotfix-p0-interface-storage-reminder -->';
+
+/**
+ * 将 R9 软性提醒（见 `checkHotfixP0InterfaceStorageMention`）以一次性、非阻塞的方式
+ * 写入活跃 `process.md`：仅在「hotfix + P0 影响 + 唯一测试通道已完成」时检测一次，
+ * 命中即追加「## 门禁软性提醒（非阻塞）」章节并留下幂等标记（同一 process.md 不重复写入）。
+ * 本函数**永不**返回失败以外的阻塞语义——调用方（`gate-stop-workflow`）须以 best-effort/
+ * try-catch 方式调用，任何异常都不得影响正常的 allow/followup 判定。
+ */
+export function recordHotfixP0SoftReminder(content) {
+  try {
+    const processPath = getActiveProcessPath();
+    if (!fs.existsSync(processPath)) return { ok: false, reason: 'no-process' };
+    let fileContent = fs.readFileSync(processPath, 'utf8');
+    const fm = parseProcessFrontmatter(fileContent);
+    if (fm.cancelled === true) return { ok: false, reason: 'cancelled' };
+    if (fileContent.includes(HOTFIX_P0_SOFT_REMINDER_MARKER)) {
+      return { ok: true, reason: 'already-recorded' };
+    }
+
+    const check = checkHotfixP0InterfaceStorageMention(content ?? fileContent);
+    if (!check.applicable || !check.needsReminder) {
+      return { ok: true, reason: 'not-needed' };
+    }
+
+    const missing = [];
+    if (!check.mentionsInterface) missing.push('接口测试报告（须含真实数据行）');
+    if (!check.mentionsStorage) missing.push('存储对账记录（须含真实数据行）');
+
+    const note = [
+      '',
+      '## 门禁软性提醒（非阻塞）',
+      '',
+      HOTFIX_P0_SOFT_REMINDER_MARKER,
+      `- [R9 软性提醒] 本次 hotfix 声明 \`hotfix_p0_impact: p0\`（影响 P0 行为），但**本次**测试报告（process.md 引用或 \`test-report.md\`）缺少结构化「${missing.join('、')}」。R14/R17 机读硬门禁按 R11 明确不并入 hotfix 折叠通道，本提醒**不阻塞**本次收尾；建议 test-engineer/项目经理复核本次热修是否实际触及接口或业务数据存储，若涉及，请在本次测试报告补充对应章节与真实数据行供人工审查参考。`,
+      '',
+    ].join('\n');
+
+    fileContent = `${fileContent.trimEnd()}\n${note}`;
+    fs.writeFileSync(processPath, fileContent, 'utf8');
+    return { ok: true, reason: 'recorded' };
+  } catch (writeErr) {
+    process.stderr.write(
+      `[recordHotfixP0SoftReminder] failed: ${writeErr?.message ?? writeErr}\n`,
+    );
+    return { ok: false, reason: 'write-failed' };
+  }
+}
+
+/**
+ * §8.4：fail-open 时将异常持久化为 process.md 阻塞事件（cancelled 流程不写）。
+ * 写入失败时仅 stderr，不影响 fail-open 放行。
+ */
+export function recordFailOpenEvent(hookName, context, err) {
+  if (!err) return { ok: false, reason: 'no-error' };
+  try {
+    const processPath = getActiveProcessPath();
+    if (!fs.existsSync(processPath)) return { ok: false, reason: 'no-process' };
+    let content = fs.readFileSync(processPath, 'utf8');
+    const fm = parseProcessFrontmatter(content);
+    if (fm.cancelled === true) return { ok: false, reason: 'cancelled' };
+
+    if (/^---\r?\n/.test(content)) {
+      content = content.replace(/^---\r?\n([\s\S]*?)\r?\n---/, (block) => {
+        if (/^blocking:\s*/m.test(block)) {
+          return block.replace(/^blocking:\s*.*$/m, 'blocking: true');
+        }
+        return block.replace(/\n---\s*$/, '\nblocking: true\n---');
+      });
+    }
+
+    const ts = new Date().toISOString();
+    const msg = String(err?.message ?? err)
+      .replace(/\|/g, '/')
+      .replace(/\r?\n/g, ' ')
+      .slice(0, 200);
+    const row = `| ${ts} | ${hookName} | ${context} | ${msg} | 待处理 |`;
+    const header = [
+      '## 门禁异常事件',
+      '',
+      '| 时间 | Hook | 上下文 | 异常摘要 | 处理状态 |',
+      '| ---- | ---- | ------ | -------- | -------- |',
+      row,
+      '',
+    ].join('\n');
+
+    if (/## 门禁异常事件/.test(content)) {
+      content = content.replace(
+        /(## 门禁异常事件\s*\n\s*\| 时间 \| Hook \| 上下文 \| 异常摘要 \| 处理状态 \|\s*\n\|[^\n]+\|\s*\n)/,
+        `$1${row}\n`,
+      );
+      if (!content.includes(row)) {
+        content = content.replace(/(## 门禁异常事件\s*\n)/, `$1\n${row}\n`);
+      }
+    } else {
+      content = `${content.trimEnd()}\n\n${header}`;
+    }
+
+    if (/## 阻塞原因/.test(content)) {
+      content = content.replace(
+        /## 阻塞原因\s*\n+无\s*(?=\n## |\n*$)/,
+        `## 阻塞原因\n\n- 阻塞原因：门禁 fail-open 异常（${hookName}/${context}），待项目经理处理\n- 待决事项：核查 stderr 与「## 门禁异常事件」，修复后门禁后清除 blocking\n- 已产出成果物：见门禁异常事件\n`,
+      );
+    }
+
+    fs.writeFileSync(processPath, content, 'utf8');
+    return { ok: true, reason: 'recorded' };
+  } catch (writeErr) {
+    process.stderr.write(
+      `[recordFailOpenEvent] failed: ${writeErr?.message ?? writeErr}\n`,
+    );
+    return { ok: false, reason: 'write-failed' };
+  }
+}
+
+function isNaRequirementRef(raw) {
+  return /^(无|不适用|n\/a|—|-)$/i.test(String(raw ?? '').trim());
+}
+
+/**
+ * R18：设计问题清单结构机读——必填表头、12 维齐全、未解决行可修复字段完备。
+ */
+export function checkDesignProblemListStructure(content) {
+  if (!content) {
+    return {
+      ok: false,
+      reason: 'empty-design-problem-list',
+      message: 'R18：设计问题清单为空。',
+    };
+  }
+
+  const tables = parseMarkdownTables(content);
+  const issueTable = tables.find((t) => t.headers.some((h) => /检查维度/.test(h)));
+  if (!issueTable) {
+    return {
+      ok: false,
+      reason: 'missing-issue-table',
+      message: 'R18：设计问题清单缺少含「检查维度」列的审核问题表。',
+    };
+  }
+
+  for (const required of REQUIRED_DPL_HEADERS) {
+    if (!issueTable.headers.some((h) => h === required || h.includes(required))) {
+      return {
+        ok: false,
+        reason: 'missing-dpl-header',
+        message: `R18：设计问题清单缺少必填列「${required}」（含关联需求编号/建议责任角色/修复建议等可修复字段）。`,
+      };
+    }
+  }
+
+  const dimIdx = issueTable.headers.findIndex((h) => /检查维度/.test(h));
+  const existIdx = issueTable.headers.findIndex((h) => /是否存在/.test(h));
+  const resolvedIdx = issueTable.headers.findIndex((h) => /是否解决/.test(h));
+  const artifactIdx = issueTable.headers.findIndex((h) => /关联成果物/.test(h));
+  const reqIdx = issueTable.headers.findIndex((h) => /关联需求编号/.test(h));
+  const roleIdx = issueTable.headers.findIndex((h) => /建议责任角色/.test(h));
+  const fixIdx = issueTable.headers.findIndex((h) => /修复建议/.test(h));
+
+  const presentDims = new Set(
+    issueTable.rows.map((row) => normalizeDimensionName(row[dimIdx])).filter(Boolean),
+  );
+  for (const dim of REQUIRED_DESIGN_REVIEW_DIMENSIONS) {
+    if (!presentDims.has(dim)) {
+      return {
+        ok: false,
+        reason: 'missing-review-dimension',
+        message: `R18：设计问题清单缺少必审维度「${dim}」（含需求覆盖度/目标达成性等 12 维）。`,
+      };
+    }
+  }
+
+  for (const row of issueTable.rows) {
+    const exists = (row[existIdx] ?? '').trim();
+    const resolved = (row[resolvedIdx] ?? '').trim();
+    if (!/^是$/.test(exists) || /^是$/.test(resolved)) continue;
+
+    const artifact = (row[artifactIdx] ?? '').trim();
+    const reqRef = (row[reqIdx] ?? '').trim();
+    const role = (row[roleIdx] ?? '').trim();
+    const fix = (row[fixIdx] ?? '').trim();
+
+    if (isBlankOrPlaceholder(artifact)) {
+      return {
+        ok: false,
+        reason: 'unresolved-missing-artifact',
+        message: 'R18：未解决设计问题缺少「关联成果物」，无法供其他 Agent 定位修复。',
+      };
+    }
+    if (isBlankOrPlaceholder(reqRef)) {
+      return {
+        ok: false,
+        reason: 'unresolved-missing-req-ref',
+        message: 'R18：未解决设计问题缺少「关联需求编号」（流程类问题可填「无」）。',
+      };
+    }
+    if (!isNaRequirementRef(reqRef)) {
+      const parts = reqRef.split(/[,，\s]+/).filter(Boolean);
+      if (parts.length === 0 || !parts.every((p) => normalizeRequirementId(p))) {
+        return {
+          ok: false,
+          reason: 'unresolved-bad-req-ref',
+          message: 'R18：未解决设计问题的「关联需求编号」格式无效（须为 R-xxx 或「无」）。',
+        };
+      }
+    }
+    if (isBlankOrPlaceholder(role) || !KNOWN_FIX_ROLE_RE.test(role)) {
+      return {
+        ok: false,
+        reason: 'unresolved-missing-role',
+        message:
+          'R18：未解决设计问题缺少合法「建议责任角色」（如 system-architect / 系统架构师）。',
+      };
+    }
+    if (isBlankOrPlaceholder(fix)) {
+      return {
+        ok: false,
+        reason: 'unresolved-missing-fix',
+        message: 'R18：未解决设计问题缺少「修复建议」，无法供其他 Agent 执行返工。',
+      };
+    }
+  }
+
+  return { ok: true, reason: 'checked' };
+}
+
+/**
+ * R18：需求覆盖矩阵机读——章节存在；全部 P0 出现且结论为「已覆盖」；
+ * 「验收标准」「设计落点/设计支撑点」「设计落点原文摘录」「任务包」均非空；
+ * 在设计/任务清单非 stub 时交叉校验可解析性（原文摘录仅校验列存在与非空，语义相关性仍由人工核验）。
+ */
+export function checkRequirementCoverageMatrix(dplContent, reqListContent) {
+  const section = extractSection(dplContent, '需求覆盖矩阵');
+  if (section == null) {
+    return {
+      ok: false,
+      reason: 'missing-coverage-matrix',
+      message: 'R18：设计问题清单缺少「## 需求覆盖矩阵」章节。',
+    };
+  }
+
+  const p0Ids = extractP0RequirementIds(reqListContent);
+  const tables = parseMarkdownTables(section);
+  const matrix = tables.find(
+    (t) =>
+      t.headers.some((h) => /需求编号/.test(h)) && t.headers.some((h) => /覆盖结论/.test(h)),
+  );
+  if (!matrix) {
+    return {
+      ok: false,
+      reason: 'missing-coverage-table',
+      message: 'R18：需求覆盖矩阵缺少含「需求编号」「覆盖结论」列的表格。',
+    };
+  }
+
+  const idIdx = matrix.headers.findIndex((h) => /需求编号/.test(h));
+  const acIdx = matrix.headers.findIndex((h) => /验收标准/.test(h));
+  // 「设计落点原文摘录」亦含「设计落点」字样，须显式排除，避免列索引串位
+  const anchorIdx = matrix.headers.findIndex(
+    (h) => /设计落点|设计支撑点/.test(h) && !/原文摘录/.test(h),
+  );
+  const excerptIdx = matrix.headers.findIndex((h) => /原文摘录/.test(h));
+  const taskIdx = matrix.headers.findIndex((h) => /任务包/.test(h));
+  const verdictIdx = matrix.headers.findIndex((h) => /覆盖结论/.test(h));
+  if (acIdx === -1) {
+    return {
+      ok: false,
+      reason: 'missing-acceptance-column',
+      message: 'R18：需求覆盖矩阵缺少「验收标准」列（须固化验收标准 ↔ 设计支撑 ↔ 任务包）。',
+    };
+  }
+  if (anchorIdx === -1 || taskIdx === -1) {
+    return {
+      ok: false,
+      reason: 'missing-coverage-columns',
+      message: 'R18：需求覆盖矩阵缺少「设计落点/设计支撑点」或「任务包」列。',
+    };
+  }
+  if (excerptIdx === -1) {
+    return {
+      ok: false,
+      reason: 'missing-excerpt-column',
+      message:
+        'R18：需求覆盖矩阵缺少「设计落点原文摘录」列（须摘录设计文档相关原句，供人工核验；机读仅校验列存在与非空）。',
+    };
+  }
+
+  const docsBase = getActiveDocsBase();
+  const designPath = path.join(docsBase, 'design/detail-design-spec.md');
+  const taskListPath = path.join(docsBase, 'design/develop-task-list.md');
+  const designContent = fs.existsSync(designPath)
+    ? fs.readFileSync(designPath, 'utf8')
+    : '';
+  const taskListContent = fs.existsSync(taskListPath)
+    ? fs.readFileSync(taskListPath, 'utf8')
+    : '';
+
+  const rowById = new Map();
+  for (const row of matrix.rows) {
+    const id = normalizeRequirementId(row[idIdx]);
+    if (id) rowById.set(id, row);
+  }
+
+  for (const id of p0Ids) {
+    const row = rowById.get(id);
+    if (!row) {
+      return {
+        ok: false,
+        reason: 'p0-missing-in-matrix',
+        message: `R18：P0 需求 ${id} 未出现在需求覆盖矩阵中。`,
+      };
+    }
+    const verdict = (row[verdictIdx] ?? '').trim();
+    if (!/^已覆盖$/.test(verdict)) {
+      return {
+        ok: false,
+        reason: 'p0-not-covered',
+        message: `R18：P0 需求 ${id} 覆盖结论不是「已覆盖」（当前：${verdict || '空'}）。`,
+      };
+    }
+    if (isBlankOrPlaceholder(row[acIdx])) {
+      return {
+        ok: false,
+        reason: 'p0-empty-acceptance',
+        message: `R18：P0 需求 ${id} 的「验收标准」为空（须填写可读验收断言或编号）。`,
+      };
+    }
+    if (isBlankOrPlaceholder(row[anchorIdx])) {
+      return {
+        ok: false,
+        reason: 'p0-empty-design-anchor',
+        message: `R18：P0 需求 ${id} 的「设计落点/设计支撑点」为空。`,
+      };
+    }
+    if (isBlankOrPlaceholder(row[excerptIdx])) {
+      return {
+        ok: false,
+        reason: 'p0-empty-design-excerpt',
+        message: `R18：P0 需求 ${id} 的「设计落点原文摘录」为空（须摘录设计文档中与该验收标准直接相关的一句原文）。`,
+      };
+    }
+    if (isBlankOrPlaceholder(row[taskIdx])) {
+      return {
+        ok: false,
+        reason: 'p0-empty-task-anchor',
+        message: `R18：P0 需求 ${id} 的「任务包」为空。`,
+      };
+    }
+    if (!designAnchorResolvable(row[anchorIdx], designContent)) {
+      return {
+        ok: false,
+        reason: 'p0-design-anchor-unresolved',
+        message: `R18：P0 需求 ${id} 的设计落点「${row[anchorIdx]}」在 detail-design-spec.md 中无法解析到对应章节。`,
+      };
+    }
+    const taskIds = extractTaskPackIds(row[taskIdx]);
+    if (taskIds.length === 0) {
+      return {
+        ok: false,
+        reason: 'p0-task-id-unparseable',
+        message: `R18：P0 需求 ${id} 的「任务包」须含可识别编号（如 T0-1）。`,
+      };
+    }
+    for (const tid of taskIds) {
+      if (!taskPackExistsInList(tid, taskListContent)) {
+        return {
+          ok: false,
+          reason: 'p0-task-not-found',
+          message: `R18：P0 需求 ${id} 引用的任务包 ${tid} 未出现在 develop-task-list.md 中。`,
+        };
+      }
+    }
+  }
+
+  return { ok: true, reason: p0Ids.length === 0 ? 'no-p0' : 'checked' };
+}
+
+/** R13：设计成果物是否就绪（供发起 requirement-reviewer 设计审核 / development-engineer 前机械校验） */
 export function checkDesignReady() {
   const docsBase = getActiveDocsBase();
   const designPath = path.join(docsBase, 'design/detail-design-spec.md');
@@ -901,15 +1613,50 @@ export function checkDesignReady() {
   return { ok: true, reason: 'checked' };
 }
 
-/** R13：设计问题清单是否无未解决问题（供发起 development-engineer 前机械校验） */
+/**
+ * R13 + R18：设计审核是否通过（供发起 development-engineer 前机械校验）。
+ * 校验：清单存在 → 结构/12 维/可修复字段 → 无未解决问题 → P0 需求覆盖矩阵
+ * （含验收标准列与落点交叉校验）→ 审核结论（返工后须复审通过）。
+ */
 export function checkDesignReviewClean() {
   const docsBase = getActiveDocsBase();
   const designProblemPath = path.join(docsBase, 'design/design-problem-list.md');
   if (!fs.existsSync(designProblemPath)) {
-    return { ok: false, reason: 'missing-design-problem-list' };
+    return {
+      ok: false,
+      reason: 'missing-design-problem-list',
+      message: '设计问题清单缺失，设计审核未通过，不得发起开发工程师。',
+    };
   }
   const content = fs.readFileSync(designProblemPath, 'utf8');
-  return { ok: !hasUnresolvedIssues(content), reason: 'checked' };
+
+  const structure = checkDesignProblemListStructure(content);
+  if (!structure.ok) return structure;
+
+  if (hasUnresolvedIssues(content)) {
+    return {
+      ok: false,
+      reason: 'unresolved-design-issues',
+      message: '设计问题清单存在未解决问题，设计审核未通过，不得发起开发工程师。',
+    };
+  }
+
+  const reqListPath = path.join(docsBase, 'requirement/requirement-list.md');
+  if (!fs.existsSync(reqListPath)) {
+    return {
+      ok: false,
+      reason: 'missing-requirement-list-for-coverage',
+      message: 'R18：缺少 requirement-list.md，无法校验需求覆盖矩阵。',
+    };
+  }
+  const reqList = fs.readFileSync(reqListPath, 'utf8');
+  const coverage = checkRequirementCoverageMatrix(content, reqList);
+  if (!coverage.ok) return coverage;
+
+  const conclusion = checkDesignReviewConclusion(content);
+  if (!conclusion.ok) return conclusion;
+
+  return { ok: true, reason: 'checked' };
 }
 
 /**
@@ -1324,7 +2071,7 @@ export function checkBatchApiTestReport() {
 }
 
 /** R13：质量报告是否无未解决高/中问题、且质量判定通过（供发起 test-engineer 前机械校验） */
-export function checkQaClean() {
+export function checkQeClean() {
   const docsBase = getActiveDocsBase();
   const qualityDir = path.join(docsBase, 'quality');
   if (!fs.existsSync(qualityDir)) return { ok: false, reason: 'missing-quality-dir' };
@@ -1333,13 +2080,13 @@ export function checkQaClean() {
   for (const f of files) {
     const content = fs.readFileSync(path.join(qualityDir, f), 'utf8');
     if (hasUnresolvedIssues(content)) return { ok: false, reason: `unresolved-in-${f}` };
-    if (/质量判定[:：]\s*不通过/.test(content)) return { ok: false, reason: `qa-fail-${f}` };
+    if (/质量判定[:：]\s*不通过/.test(content)) return { ok: false, reason: `qe-fail-${f}` };
   }
   return { ok: true, reason: 'checked' };
 }
 
 /**
- * R15：编程规范（lint）门禁是否通过（供发起 test-engineer 前机械校验，与 checkQaClean 并列）。
+ * R15：编程规范（lint）门禁是否通过（供发起 test-engineer 前机械校验，与 checkQeClean 并列）。
  * docs-only 模式或经双要素适用性豁免时视为通过；否则须存在 lint-run.mjs 机读产物且 gatePassed=true。
  */
 export function checkLintClean() {
@@ -1368,6 +2115,75 @@ export function checkStaticScanClean() {
   if (!result) return { ok: false, reason: 'no-static-scan-result' };
   if (!dupOk) return { ok: false, reason: 'dup-check-not-passed' };
   return { ok: false, reason: 'security-scan-not-passed' };
+}
+
+/**
+ * 从「## 当前分派计划 / ## 待派发角色列表」提取本次 quality-engineer 审查的任务包编号。
+ * 分派计划行：分派角色为 quality-engineer/质量工程师，任务包编号列（或整行）含 B1 编号；
+ * 待派发行：角色列为 quality-engineer，说明列含任务包编号。
+ */
+export function extractQeDispatchTaskPacks(content) {
+  const packs = new Set();
+  const qeAliases = ROLE_ALIASES['质量工程师'] ?? ['quality-engineer', '质量工程师'];
+
+  const planSection = extractSection(content, '当前分派计划');
+  if (planSection) {
+    const tables = parseMarkdownTables(planSection);
+    for (const table of tables) {
+      const roleIdx = table.headers.findIndex((h) => /分派角色|角色/.test(h));
+      const packIdx = table.headers.findIndex((h) => /任务包/.test(h));
+      for (const row of table.rows) {
+        const roleCell = roleIdx >= 0 ? row[roleIdx] ?? '' : row.join(' ');
+        if (!qeAliases.some((a) => String(roleCell).includes(a))) continue;
+        const raw = packIdx >= 0 ? row[packIdx] ?? '' : row.join(' ');
+        for (const id of extractAllTaskCodes(raw)) packs.add(id);
+      }
+    }
+  }
+
+  const pendingSection = extractSection(content, '待派发角色列表');
+  if (pendingSection) {
+    const tables = parseMarkdownTables(pendingSection);
+    for (const table of tables) {
+      const roleIdx = table.headers.findIndex((h) => /角色/.test(h));
+      const noteIdx = table.headers.findIndex((h) => /说明|任务包|范围/.test(h));
+      for (const row of table.rows) {
+        const roleCell = roleIdx >= 0 ? row[roleIdx] ?? '' : row.join(' ');
+        if (!qeAliases.some((a) => String(roleCell).includes(a))) continue;
+        const raw = noteIdx >= 0 ? row[noteIdx] ?? '' : row.join(' ');
+        for (const id of extractAllTaskCodes(raw)) packs.add(id);
+      }
+    }
+  }
+
+  return [...packs];
+}
+
+/**
+ * 查询「## 进度列表」中指定任务包对应开发工程师行的最新有效状态（B1）。
+ * @returns {'complete'|'inProgress'|'other'|null} null = 未找到该任务包的开发行
+ */
+export function getDevLineStatusForTaskPack(content, taskId) {
+  const body = extractSection(content, '进度列表');
+  if (!body || !taskId) return null;
+  const roleAliases = ROLE_ALIASES['开发工程师'] ?? ['开发工程师', 'development-engineer'];
+  let latest = null;
+  for (const line of body.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('|')) continue;
+    if (/^\|[\s|:-]+\|?$/.test(t)) continue;
+    if (!roleAliases.some((alias) => t.includes(alias))) continue;
+    const code = extractTaskCode(t);
+    if (code !== taskId) continue;
+    if (/已作废|superseded/i.test(t)) {
+      latest = null; // tombstone
+      continue;
+    }
+    if (t.includes('执行完成')) latest = 'complete';
+    else if (t.includes('正在执行')) latest = 'inProgress';
+    else latest = 'other';
+  }
+  return latest;
 }
 
 /**
@@ -1413,15 +2229,27 @@ export function checkRoleDispatchGate(role) {
               '需求成果物未就绪（requirement-spec.md/requirement-list.md 缺失，或用户确认记录为空），不得发起 system-architect。',
           };
     }
-    case 'product-manager': {
+    case 'requirement-reviewer': {
       const r = checkDesignReady();
-      return r.ok
-        ? { ok: true, reason: 'checked' }
-        : {
+      if (!r.ok) {
+        return {
+          ok: false,
+          reason: r.reason,
+          message:
+            '设计成果物未就绪（detail-design-spec.md/develop-task-list.md 缺失），不得发起 requirement-reviewer 设计审核。',
+        };
+      }
+      if (mode !== 'hotfix' && mode !== 'docs-only') {
+        const tech = checkTechSelectionConfirmed(content);
+        if (!tech.ok) {
+          return {
             ok: false,
-            reason: r.reason,
-            message: '设计成果物未就绪（detail-design-spec.md/develop-task-list.md 缺失），不得发起 product-manager 设计审核。',
+            reason: tech.reason,
+            message: tech.message,
           };
+        }
+      }
+      return { ok: true, reason: 'checked' };
     }
     case 'development-engineer': {
       if (mode === 'docs-only') {
@@ -1436,14 +2264,36 @@ export function checkRoleDispatchGate(role) {
             message: 'R9：hotfix 前置校验未通过，detail-design-spec.md 不存在，须先由 system-architect 补最小热修设计。',
           };
         }
+        const p0 = checkHotfixP0Impact(content);
+        if (!p0.ok) {
+          return {
+            ok: false,
+            reason: p0.reason,
+            message: p0.message,
+          };
+        }
       } else {
+        const tech = checkTechSelectionConfirmed(content);
+        if (!tech.ok) {
+          return {
+            ok: false,
+            reason: tech.reason,
+            message: tech.message,
+          };
+        }
         const d = checkDesignReady();
         if (!d.ok) {
           return { ok: false, reason: d.reason, message: '设计成果物未就绪，不得发起开发工程师。' };
         }
         const clean = checkDesignReviewClean();
         if (!clean.ok) {
-          return { ok: false, reason: clean.reason, message: '设计问题清单存在未解决问题，设计审核未通过，不得发起开发工程师。' };
+          return {
+            ok: false,
+            reason: clean.reason,
+            message:
+              clean.message ??
+              '设计问题清单存在未解决问题或 R18 机读未通过，设计审核未通过，不得发起开发工程师。',
+          };
         }
       }
       if (!hasValidDispatchPlan(content)) {
@@ -1451,29 +2301,62 @@ export function checkRoleDispatchGate(role) {
       }
       return { ok: true, reason: 'checked' };
     }
-    case 'quality-assurance-engineer': {
+    case 'quality-engineer': {
       const state = parseWorkflowState(content);
       if (!(state.devComplete || state.devInProgress)) {
-        return { ok: false, reason: 'dev-not-started', message: '开发工程师尚未产出/尚未标记执行状态，不得发起质量保障工程师。' };
+        return {
+          ok: false,
+          reason: 'dev-not-started',
+          message: '开发工程师尚未产出/尚未标记执行状态，不得发起质量工程师。',
+        };
+      }
+      const qePacks = extractQeDispatchTaskPacks(content);
+      if (qePacks.length === 0) {
+        return {
+          ok: false,
+          reason: 'qe-missing-task-packs',
+          message:
+            '分派 quality-engineer 前，须在「## 当前分派计划」或「## 待派发角色列表」标明本次审查的任务包编号（分派角色/角色列为 quality-engineer）。',
+        };
+      }
+      const incomplete = [];
+      for (const tid of qePacks) {
+        const status = getDevLineStatusForTaskPack(content, tid);
+        if (status !== 'complete') {
+          const label =
+            status === 'inProgress'
+              ? '正在执行'
+              : status === 'other'
+                ? '非执行完成'
+                : '未找到开发行';
+          incomplete.push(`${tid}（${label}）`);
+        }
+      }
+      if (incomplete.length > 0) {
+        return {
+          ok: false,
+          reason: 'qe-dev-line-not-complete',
+          message: `质量工程师对应开发线尚未「执行完成」：${incomplete.join('、')}。须等开发完成并更新进度后再派发 QE。`,
+        };
       }
       return { ok: true, reason: 'checked' };
     }
     case 'test-engineer': {
       const state = parseWorkflowState(content);
-      if (!state.qaComplete) {
-        return { ok: false, reason: 'qa-not-complete', message: '质量保障审核尚未全部通过，不得发起测试工程师。' };
+      if (!state.qeComplete) {
+        return { ok: false, reason: 'qe-not-complete', message: '质量审核尚未全部通过，不得发起测试工程师。' };
       }
-      const qaClean = checkQaClean();
-      if (!qaClean.ok) {
-        return { ok: false, reason: qaClean.reason, message: '质量报告存在未解决高/中严重等级问题或质量判定未通过，不得发起测试工程师。' };
+      const qeClean = checkQeClean();
+      if (!qeClean.ok) {
+        return { ok: false, reason: qeClean.reason, message: '质量报告存在未解决高/中严重等级问题或质量判定未通过，不得发起测试工程师。' };
       }
       const lintClean = checkLintClean();
       if (!lintClean.ok) {
-        return { ok: false, reason: lintClean.reason, message: 'R15：编程规范（lint）门禁未通过（.lint-result.json 缺失或 gatePassed≠true），QA 阶段须运行 `node .cursor/scripts/lint-run.mjs` 并整改至通过；确无可用 linter 时须走「架构师声明 lintApplicability:"n/a" + 用户确认」双要素豁免。不得发起测试工程师。' };
+        return { ok: false, reason: lintClean.reason, message: 'R15：编程规范（lint）门禁未通过（.lint-result.json 缺失或 gatePassed≠true），QE 阶段须运行 `node .cursor/scripts/lint-run.mjs` 并整改至通过；确无可用 linter 时须走「架构师声明 lintApplicability:"n/a" + 用户确认」双要素豁免。不得发起测试工程师。' };
       }
       const staticScanClean = checkStaticScanClean();
       if (!staticScanClean.ok) {
-        return { ok: false, reason: staticScanClean.reason, message: 'R16：静态代码质量门禁未通过（.static-scan-result.json 缺失或重复代码/安全扫描任一 gatePassed≠true），QA 阶段须运行 `node .cursor/scripts/static-scan-run.mjs` 并整改至通过；确无法运行时须分别走「架构师声明 dupCheckApplicability/securityScanApplicability:"n/a" + 用户确认」双要素豁免。不得发起测试工程师。' };
+        return { ok: false, reason: staticScanClean.reason, message: 'R16：静态代码质量门禁未通过（.static-scan-result.json 缺失或重复代码/安全扫描任一 gatePassed≠true），QE 阶段须运行 `node .cursor/scripts/static-scan-run.mjs` 并整改至通过；确无法运行时须分别走「架构师声明 dupCheckApplicability/securityScanApplicability:"n/a" + 用户确认」双要素豁免。不得发起测试工程师。' };
       }
       return { ok: true, reason: 'checked' };
     }
@@ -1491,8 +2374,8 @@ export function parseWorkflowState(content) {
       cancelled: false,
       devInProgress: false,
       devComplete: false,
-      hasQaRecord: false,
-      qaComplete: false,
+      hasQeRecord: false,
+      qeComplete: false,
       testComplete: false,
       batchTestRowComplete: false,
       finalTestRowComplete: false,
@@ -1522,13 +2405,13 @@ export function parseWorkflowState(content) {
   const isDocsOnly = workflowMode === 'docs-only';
 
   const dev = roleProgressStats(content, '开发工程师');
-  const qa = roleProgressStats(content, '质量保障工程师');
+  const qe = roleProgressStats(content, '质量工程师');
   const te = testEngineerStats(content);
 
   const devInProgress = dev.inProgress > 0;
   const devComplete = dev.total > 0 && dev.complete === dev.total && dev.inProgress === 0;
-  const hasQaRecord = qa.total > 0;
-  const qaComplete = qa.total > 0 && qa.complete === qa.total && qa.inProgress === 0;
+  const hasQeRecord = qe.total > 0;
+  const qeComplete = qe.total > 0 && qe.complete === qe.total && qe.inProgress === 0;
 
   const batchTestRowComplete = te.batch.total > 0 && te.batch.complete === te.batch.total && te.batch.inProgress === 0;
   const finalTestRowComplete = te.final.total > 0 && te.final.complete === te.final.total && te.final.inProgress === 0;
@@ -1549,15 +2432,15 @@ export function parseWorkflowState(content) {
   const batchStorageReconPresent =
     storageReconciliationExempt || checkBatchStorageReconciliationReport(content).ok;
 
-  // R15：编程规范（lint）硬门禁——QA 阶段须实际运行 lint 且 gatePassed=true（机读产物
-  // test-results/qa/.lint-result.json）。docs-only 无开发窗口视为满足；确无可用 linter 项目
+  // R15：编程规范（lint）硬门禁——QE 阶段须实际运行 lint 且 gatePassed=true（机读产物
+  // test-results/qe/.lint-result.json）。docs-only 无开发窗口视为满足；确无可用 linter 项目
   // 经「架构师声明 lintApplicability:"n/a" + 用户确认」双要素豁免后视为满足（防单方面弱化，R12）。
   const lintExempt = isLintExempt(content);
   const lintResult = readLintResult();
   const lintPassed = isDocsOnly ? true : (lintExempt || lintResult?.gatePassed === true);
 
-  // R16：静态代码质量硬门禁（重复代码 DRY + 安全静态扫描）——QA 阶段须实际运行且
-  // 两项子检查均 gatePassed=true（机读产物 test-results/qa/.static-scan-result.json）。
+  // R16：静态代码质量硬门禁（重复代码 DRY + 安全静态扫描）——QE 阶段须实际运行且
+  // 两项子检查均 gatePassed=true（机读产物 test-results/qe/.static-scan-result.json）。
   // docs-only 无开发窗口视为满足；重复代码/安全扫描可分别经「架构师声明
   // dupCheckApplicability|securityScanApplicability:"n/a" + 用户确认」双要素豁免后视为满足
   // （防单方面弱化，R12）。staticScanExempt 仅当两项子检查均处于豁免状态时为 true。
@@ -1581,16 +2464,16 @@ export function parseWorkflowState(content) {
   const finalTestRequired = isDocsOnly
     ? false
     : isHotfix
-      ? devComplete && qaComplete
-      : devComplete && qaComplete && batchTestComplete;
+      ? devComplete && qeComplete
+      : devComplete && qeComplete && batchTestComplete;
 
   return {
     blocking,
     cancelled,
     devInProgress,
     devComplete,
-    hasQaRecord,
-    qaComplete,
+    hasQeRecord,
+    qeComplete,
     testComplete: finalTestComplete, // 兼容旧字段名
     batchTestRowComplete,
     finalTestRowComplete,
