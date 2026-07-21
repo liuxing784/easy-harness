@@ -59,4 +59,4 @@ alwaysApply: true
 
 ## 6. 与角色定义文件的协同
 
-各角色定义文件（`.trae/agents/*.md`）为 Trae 原生 Subagent，由内置 "Agent" 按 `description` 字段匹配调用，拥有独立上下文窗口（见 `AGENTS.md` §0.1）。各角色 Subagent 的系统提示词已收纳本规则全文引用（「门禁前置：见 `.trae/rules/gate-protocol.mdc`」），由 Subagent 文件本身承载，**无需顶层代理在调用 `prompt` 中再行注入**。顶层代理按 `AGENTS.md` §4 流程编排协议发起 Subagent 调用，仅传递任务上下文（用户目标、`process.md` 路径、已有成果物路径、PM 分派计划），不得越权代行角色职责。
+各角色定义文件（`.trae/agents/*.md`）为 Trae 原生 Subagent，由内置 "Agent" 按 `description` 字段匹配调用，拥有独立上下文窗口（见 `AGENTS.md` §1）。各角色 Subagent 的系统提示词已收纳本规则全文引用（「门禁前置：见 `.trae/rules/gate-protocol.md`」），由 Subagent 文件本身承载，**无需顶层代理在调用 `prompt` 中再行注入**。顶层代理按 `AGENTS.md` §4 流程编排协议发起 Subagent 调用，仅传递任务上下文（用户目标、`process.md` 路径、已有成果物路径、PM 分派计划），不得越权代行角色职责。

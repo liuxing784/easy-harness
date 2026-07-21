@@ -2,12 +2,12 @@
 /**
  * R13（需求 6）：成果物门禁链机械化。
  *
- * 拦截 Task 工具调用，在角色 Task 真正发起前，对 AGENTS.md §5 门禁链表格中
+ * 拦截 Task 工具调用，在角色 Task 真正发起前，对 `.cursor/harness/spec/gate-chain.md` 门禁链表格中
  * 客观可判定的前置条件（成果物文件是否存在、设计问题清单/质量报告表格是否有
- * 未解决项等）做机械校验，不满足则 deny——把原先仅靠 R8/§5 文字约束的部分
+ * 未解决项等）做机械校验，不满足则 deny——把原先仅靠 R8/gate-chain.md 文字约束的部分
  * 转为 Hook 强制，减少对文字规则可靠性的依赖。
  *
- * fail-open 兜底（AGENTS.md §8.4，与其余 4 个 Hook 一致，`hooks.json` 亦将本 Hook
+ * fail-open 兜底（`.cursor/harness/spec/mechanical-gates.md` §8.4，与其余 4 个 Hook 一致，`hooks.json` 亦将本 Hook
  * 设为 `failClosed: false` 双重保险）：
  * - workflow-gate-lib.mjs 动态加载失败或执行期出现未预期异常时放行；
  * - 无法从 tool_input 中解析出目标角色名时放行；
@@ -83,7 +83,7 @@ async function main() {
       JSON.stringify({
         permission: 'deny',
         user_message: `流程门禁（R13）：发起 ${role} 前置条件未满足——${result.message ?? result.reason}`,
-        agent_message: `AGENTS.md R13/§5：${result.message ?? result.reason}（reason=${result.reason}）。请先完成对应前置成果物或分派，再重试发起该角色。`,
+        agent_message: `AGENTS.md R13/gate-chain.md：${result.message ?? result.reason}（reason=${result.reason}）。请先完成对应前置成果物或分派，再重试发起该角色。`,
       }),
     );
     process.exit(0);

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 批次/最终 E2E 门禁运行器（Chromium-only）。判据与命令的唯一权威定义见 AGENTS.md §8.3。
+ * 批次/最终 E2E 门禁运行器（Chromium-only）。判据与命令的说明权威见 `.cursor/harness/spec/mechanical-gates.md` §8.3（执行权威：Hook/脚本）。
  *
  * 用法：
  *   node .cursor/scripts/e2e-run.mjs --scope=batch --required-ids=R-001,R-002

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * preToolUse 门禁：无项目经理分派计划时，禁止写入开发产物。
- * 自锁防护（AGENTS.md §8.4）：workflow-gate-lib.mjs 动态加载失败或执行期出现未预期
+ * 自锁防护（`.cursor/harness/spec/mechanical-gates.md` §8.4）：workflow-gate-lib.mjs 动态加载失败或执行期出现未预期
  * 异常时 fail-open 放行并打印 stderr 告警，避免门禁自身故障导致全流程硬死锁。
  */
 function failOpenAllow(context, err, lib) {

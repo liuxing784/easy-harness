@@ -2,7 +2,7 @@
  * lint-run.mjs 的纯函数库：跨技术栈 lint 命令解析与 gatePassed 判据计算。
  * 与 workflow-gate-lib.mjs 独立（不引入运行时状态依赖），便于单测覆盖。
  *
- * 编程规范门禁（R15，AGENTS.md §8.2 唯一权威定义）：QE 阶段须实际运行 lint 且
+ * 编程规范门禁（R15，.trae/harness/spec/mechanical-gates.md §8.2 唯一权威定义）：QE 阶段须实际运行 lint 且
  * 退出码为 0，机读结果落盘 test-results/qe/.lint-result.json（gatePassed 字段），
  * 判据结构与 E2E 门禁（e2e-run-lib.mjs）同构。`gatePassed` 仅在「有 lint 命令且
  * 退出码为 0」时为 true；无可用 lint 命令时 gatePassed=false（reason=no-lint-command），

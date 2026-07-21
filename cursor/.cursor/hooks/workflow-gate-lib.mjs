@@ -1188,7 +1188,7 @@ function collectCurrentHotfixTestReportPaths(content) {
 }
 
 /**
- * R9 软性提醒（非阻塞，唯一权威定义见 AGENTS.md §5 R9 脚注第 4 条）：
+ * R9 软性提醒（非阻塞，说明权威见 `.cursor/harness/spec/gate-chain.md` R9 脚注第 4 条（执行权威：Hook/脚本））：
  * P0 影响的 hotfix 走 R11 折叠通道时，R14（接口测试）/R17（存储对账）机读硬门禁
  * 明确不并入该通道（仅约束 full 模式开发窗口批次阶段），但高风险的 P0 行为变更仍
  * 应在**本次**测试报告中留痕接口/存储相关验证结果。本函数仅对**本次 hotfix 测试报告**
@@ -1275,7 +1275,7 @@ export function recordHotfixP0SoftReminder(content) {
 }
 
 /**
- * §8.4：fail-open 时将异常持久化为 process.md 阻塞事件（cancelled 流程不写）。
+ * `.cursor/harness/spec/mechanical-gates.md` §8.4：fail-open 时将异常持久化为 process.md 阻塞事件（cancelled 流程不写）。
  * 写入失败时仅 stderr，不影响 fail-open 放行。
  */
 export function recordFailOpenEvent(hookName, context, err) {
@@ -1660,7 +1660,7 @@ export function checkDesignReviewClean() {
 }
 
 /**
- * E2E 适用性豁免——无 UI 项目可豁免浏览器 E2E 相关判据，判定遵循 §8.2 双要素：
+ * E2E 适用性豁免——无 UI 项目可豁免浏览器 E2E 相关判据，判定遵循 `mechanical-gates.md` §8.2 双要素：
  * ①`gated-artifacts.json` 声明 `e2eApplicability: "n/a"`；
  * ②`process.md`「## 用户确认记录」含一行 E2E 豁免确认。两项皆满足才豁免（R12）。
  * 供 R17 分类型行（场景类型=E2E）机读联立使用。
@@ -1687,7 +1687,7 @@ export function isE2eExempt(content) {
 
 /**
  * R17：业务数据存储对账适用性豁免——无业务数据持久化（数据库/文件/缓存/对象存储等）
- * 的项目可豁免 R17 机读判据，判定与 R14 同构（§8.2 双要素）：
+ * 的项目可豁免 R17 机读判据，判定与 R14 同构（`mechanical-gates.md` §8.2 双要素）：
  * ①`gated-artifacts.json` 声明 `storageReconciliationApplicability: "n/a"`；
  * ②`process.md`「## 用户确认记录」含一行存储对账豁免确认。两项皆满足才豁免（R12）。
  */
@@ -1711,7 +1711,7 @@ export function isStorageReconciliationExempt(content) {
   return hasStorageReconciliationExemptionConfirmation(md);
 }
 
-/** R17：具名存储介质关键词（与 AGENTS.md §8.3 一致；不含「其他」「不适用」） */
+/** R17：具名存储介质关键词（与 `.cursor/harness/spec/mechanical-gates.md` §8.3 一致；不含「其他」「不适用」） */
 const STORAGE_MEDIUM_NAMED_RE =
   /数据库|\bdb\b|database|文件|filesystem|\bfile\b|缓存|\bcache\b|对象存储|\bobject\b|\bblob\b|\bs3\b|\boss\b|\bminio\b/i;
 
@@ -1859,7 +1859,7 @@ function validateStorageReconRow(row) {
 /**
  * R17：批次（开发窗口）集成测试阶段必须做业务数据存储对账——测试报告须含非空的
  * 「## 存储对账记录」章节，且满足分类型行、描述列完备、「其他」/「不适用」备注、
- * 存储介质列与批次任务包覆盖机读（AGENTS.md §8.3 唯一权威）。
+ * 存储介质列与批次任务包覆盖机读（`.cursor/harness/spec/mechanical-gates.md` §8.3 说明权威；执行权威：Hook/脚本）。
  * 「不适用」行仅计入任务包覆盖，不计入接口/E2E 分类型真实对账；项目未整体豁免时
  * 至少须有一条适用（真实对账）行。
  * 扫描当前活跃 docs 子树 `test/` 目录下所有 `*.md`；合并全部对账行后整体判定。
@@ -1934,7 +1934,7 @@ export function checkBatchStorageReconciliationReport(content) {
 
 /**
  * R14：接口测试适用性豁免——无对外接口的项目（纯算法库、纯静态前端、无 HTTP/RPC/CLI
- * 契约的组件等）可豁免「必须做接口测试」判据，判定与 E2E 适用性豁免同构（§8.3）：
+ * 契约的组件等）可豁免「必须做接口测试」判据，判定与 E2E 适用性豁免同构（`mechanical-gates.md` §8.3）：
  * 须同时满足①架构师在活跃 `gated-artifacts.json` 声明 `apiTestApplicability: "n/a"`；
  * ②`process.md`「## 用户确认记录」含一行接口测试豁免确认。两项皆满足才豁免，避免单方
  * 面弱化门禁（R12）。
@@ -2187,7 +2187,7 @@ export function getDevLineStatusForTaskPack(content, taskId) {
 }
 
 /**
- * R13：成果物门禁链机械化——对 §5 表格中可客观判定的前置条件做机械校验，
+ * R13：成果物门禁链机械化——对 `gate-chain.md` 表格中可客观判定的前置条件做机械校验，
  * 供 `gate-role-sequence.mjs` 在 Task 发起前拦截。仅覆盖客观可判定部分；
  * 调用者身份（顶层代理 vs 子 agent）与语义类判断（如 single-task 是否单文件级）
  * 不可机械化，继续由 AGENTS.md 文字约束承担（见 R8/R2 说明）。

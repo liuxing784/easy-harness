@@ -3,7 +3,7 @@
  * 覆盖率与 gatePassed 判据计算。与 workflow-gate-lib.mjs 独立（不引入运行时状态依赖），
  * 便于 vitest 单测覆盖（见 e2e-run-lib.test.ts）。
  *
- * 浏览器范围（AGENTS.md §8.3 唯一权威定义）：仅需支持 Chrome 内核浏览器（Chromium），
+ * 浏览器范围（.trae/harness/spec/mechanical-gates.md §8.3 唯一权威定义）：仅需支持 Chrome 内核浏览器（Chromium），
  * 本文件与调用方 e2e-run.mjs 均只解析 `chromium` project 的结果，不引入
  * Firefox/WebKit 相关代码路径——浏览器范围是本机械门禁**唯一**允许简化的维度，
  * `gatePassed`、覆盖率、追溯标签等判据不因浏览器范围收窄而放松。

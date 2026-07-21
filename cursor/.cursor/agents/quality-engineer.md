@@ -63,25 +63,25 @@ model: composer-2.5
 
 ## 编程规范（lint）硬门禁（R15）
 
-QE 阶段**必须实际运行 lint 且通过**，判据与 E2E 门禁同构（机读产物 → Hook 机械判定）。唯一权威定义见 `AGENTS.md` §8.2（R15）。
+QE 阶段**必须实际运行 lint 且通过**，判据与 E2E 门禁同构（机读产物 → Hook 机械判定）。R15 说明权威见 `.cursor/harness/spec/mechanical-gates.md` §8.2（执行权威：Hook/脚本）。
 
 1. **执行命令**：`node .cursor/scripts/lint-run.mjs`
 2. **机读产物**：`test-results/qe/.lint-result.json`（`gatePassed=true` 方可推进测试）
 3. **命令解析**：`harness.config.json` → `qe.commands.lint` 覆盖 > 构建清单自动探测 > 栈默认（与 `lint-run.mjs` 同口径；**多数项目不必手配 config**）
 4. **质量报告**：须在「## 编程规范（lint）执行记录」记录实际命令、退出码、`gatePassed` 与结果摘要
 5. **lint 失败**：须在质量报告「代码规范」行标记问题，严重等级**中**或以上；整改后须重跑 `lint-run.mjs` 直至 `gatePassed=true`
-6. **适用性豁免**（确无可用 linter）：遵循 `AGENTS.md` §8.2「双要素豁免机制」表 R15 行，只声明一项不生效
+6. **适用性豁免**（确无可用 linter）：遵循 `.cursor/harness/spec/mechanical-gates.md` §8.2「双要素豁免机制」表 R15 行，只声明一项不生效
 
 ## 静态代码质量硬门禁（R16：重复代码 + 安全扫描）
 
-QE 阶段**必须实际运行重复代码检测与安全静态扫描且均通过**，判据结构与 lint 门禁（R15）同构。唯一权威定义见 `AGENTS.md` §8.2（R16）。
+QE 阶段**必须实际运行重复代码检测与安全静态扫描且均通过**，判据结构与 lint 门禁（R15）同构。R16 说明权威见 `.cursor/harness/spec/mechanical-gates.md` §8.2（执行权威：Hook/脚本）。
 
 1. **执行命令**：`node .cursor/scripts/static-scan-run.mjs`（内部依次运行重复代码检测 `jscpd-rs` 与安全扫描 `gitleaks-secret-scanner`，二者经 `npx` 获取，跨技术栈通用，无需按栈适配）
 2. **机读产物**：`test-results/qe/.static-scan-result.json`（顶层 `gatePassed=true` 方可推进测试；内含 `duplication.gatePassed` / `security.gatePassed` 两个子字段）
 3. **命令解析**：`harness.config.json` → `qe.commands.dupCheck` / `qe.commands.securityScan` 覆盖 > 框架通用默认值（**多数项目不必手配 config**）
 4. **质量报告**：须在「## 静态代码质量执行记录（R16）」记录重复代码与安全扫描各自的实际命令、退出码、`gatePassed` 与结果摘要
 5. **未通过**：须在质量报告「代码规范」（重复代码）或「安全」（安全扫描）行标记问题，严重等级**中**或以上；整改后须重跑 `static-scan-run.mjs` 直至两项子检查均 `gatePassed=true`
-6. **适用性豁免**（确无法运行）：遵循 `AGENTS.md` §8.2「双要素豁免机制」表 R16 两行，重复代码与安全扫描**分别独立**豁免、互不代替，只声明一项不生效
+6. **适用性豁免**（确无法运行）：遵循 `.cursor/harness/spec/mechanical-gates.md` §8.2「双要素豁免机制」表 R16 两行，重复代码与安全扫描**分别独立**豁免、互不代替，只声明一项不生效
 
 ## 说明
 

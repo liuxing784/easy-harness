@@ -952,7 +952,7 @@ export function isStorageReconciliationExempt(content) {
   return hasStorageReconciliationExemptionConfirmation(md);
 }
 
-/** R17：具名存储介质关键词（与 AGENTS.md §8.3 一致；不含「其他」「不适用」） */
+/** R17：具名存储介质关键词（与 .trae/harness/spec/mechanical-gates.md §8.3 一致；不含「其他」「不适用」） */
 const STORAGE_MEDIUM_NAMED_RE =
   /数据库|\bdb\b|database|文件|filesystem|\bfile\b|缓存|\bcache\b|对象存储|\bobject\b|\bblob\b|\bs3\b|\boss\b|\bminio\b/i;
 
@@ -1099,7 +1099,7 @@ function validateStorageReconRow(row) {
 /**
  * R17：批次（开发窗口）集成测试阶段必须做业务数据存储对账——测试报告须含非空的
  * 「## 存储对账记录」章节，且满足分类型行、描述列完备、「其他」/「不适用」备注、
- * 存储介质列与批次任务包覆盖机读（AGENTS.md §8.3 唯一权威）。
+ * 存储介质列与批次任务包覆盖机读（.trae/harness/spec/mechanical-gates.md §8.3 唯一权威）。
  * 「不适用」行仅计入任务包覆盖，不计入接口/E2E 分类型真实对账；项目未整体豁免时
  * 至少须有一条适用（真实对账）行。
  * 扫描当前活跃 docs 子树 `test/` 目录下所有 `*.md`；合并全部对账行后整体判定。
@@ -1619,7 +1619,7 @@ function collectCurrentHotfixTestReportPaths(content) {
 }
 
 /**
- * R9 软性提醒（非阻塞，唯一权威定义见 AGENTS.md §5 R9 脚注第 4 条）：
+ * R9 软性提醒（非阻塞，唯一权威定义见 .trae/harness/spec/gate-chain.md §5 R9 脚注第 4 条）：
  * P0 影响的 hotfix 走 R11 折叠通道时，R14（接口测试）/R17（存储对账）机读硬门禁
  * 明确不并入该通道（仅约束 full 模式开发窗口批次阶段），但高风险的 P0 行为变更仍
  * 应在**本次**测试报告中留痕接口/存储相关验证结果。本函数仅对**本次 hotfix 测试报告**

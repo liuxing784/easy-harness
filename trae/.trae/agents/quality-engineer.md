@@ -30,7 +30,8 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 2. 设计审核已通过；
 3. 代码实现与 `detail-design-spec.md`、`gated-artifacts.json` 一致；
 4. 代码由**开发工程师**在分派范围内产出；
-5. 审查范围限于本开发线任务包（除非分派计划明确为全量审查）。
+5. 审查范围限于本开发线任务包（除非分派计划明确为全量审查）；
+6. **核对** `process.md`「## 进度列表」中本次分派对应的开发线状态确为「执行完成」——机械门禁（`gate-role-sequence`）会校验分派计划中的任务包编号，并逐包要求对应开发行已「执行完成」；若 Hook 因「正在执行」拒绝或你发现状态不符，须拒绝继续审查并要求项目经理先确认状态。
 
 ## 审查维度
 
@@ -39,7 +40,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 | 流程合规性 | 有分派计划、无顶层代写、范围不越界 |
 | 代码规范 | 符合设计文档 §5（含 SRP/DRY/KISS/SOLID/清晰命名/小函数/完整错误处理/日志规范）；**lint 门禁 `gatePassed=true`**（R15）；**重复代码检测 `gatePassed=true`**（R16） |
 | 安全 | 符合设计文档 §8 安全编码要求（无硬编码密钥、输入校验/防注入、错误信息脱敏）；**安全静态扫描 `gatePassed=true`**（R16） |
-| 单元测试完备性 | 核心逻辑有测试，且全量运行通过 |
+| 单元测试完备性 | 核心逻辑有测试 |
 | 架构一致性 | 技术栈、目录结构、模块划分（高内聚低耦合、单一职责）与 design §2/§3 一致 |
 | 依赖安全 | 按技术栈运行对应审计命令并记录结果（见下表） |
 
@@ -61,23 +62,27 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 
 > 若所选栈无成熟审计工具，须在质量报告「依赖审计」中说明缺失原因与人工核查范围，不得留空。
 
-## 编程规范（lint）硬门禁（R15）与静态代码质量硬门禁（R16）
+## 编程规范（lint）硬门禁（R15）
 
-R15/R16 的判据、机读产物路径、豁免条件的**唯一权威定义**见 `AGENTS.md` §8.2。本章节仅记录 QE 侧的执行要点。
+QE 阶段**必须实际运行 lint 且通过**，判据与 E2E 门禁同构（机读产物 → Hook 机械判定）。R15 说明权威见 `.trae/harness/spec/mechanical-gates.md` §8.2（执行权威：Hook/脚本）。
 
-### R15 — lint 门禁
+1. **执行命令**：`node .trae/scripts/lint-run.mjs`
+2. **机读产物**：`test-results/qe/.lint-result.json`（`gatePassed=true` 方可推进测试）
+3. **命令解析**：`harness.config.json` → `qe.commands.lint` 覆盖 > 构建清单自动探测 > 栈默认（与 `lint-run.mjs` 同口径；**多数项目不必手配 config**）
+4. **质量报告**：须在「## 编程规范（lint）执行记录」记录实际命令、退出码、`gatePassed` 与结果摘要
+5. **lint 失败**：须在质量报告「代码规范」行标记问题，严重等级**中**或以上；整改后须重跑 `lint-run.mjs` 直至 `gatePassed=true`
+6. **适用性豁免**（确无可用 linter）：遵循 `.trae/harness/spec/mechanical-gates.md` §8.2「双要素豁免机制」表 R15 行，只声明一项不生效
 
-1. **执行**：`node .trae/scripts/lint-run.mjs` → `test-results/qe/.lint-result.json`
-2. **质量报告**：在「## 编程规范（lint）执行记录」记录实际命令、退出码、`gatePassed` 与结果摘要
-3. **失败处理**：在质量报告「代码规范」行标记问题（严重等级**中**或以上），整改后重跑直至 `gatePassed=true`
-4. **豁免**：`gated-artifacts.json` 声明 `lintApplicability: "n/a"` + 用户确认，**仅一项不生效**
+## 静态代码质量硬门禁（R16：重复代码 + 安全扫描）
 
-### R16 — 重复代码 + 安全静态扫描
+QE 阶段**必须实际运行重复代码检测与安全静态扫描且均通过**，判据结构与 lint 门禁（R15）同构。R16 说明权威见 `.trae/harness/spec/mechanical-gates.md` §8.2（执行权威：Hook/脚本）。
 
-1. **执行**：`node .trae/scripts/static-scan-run.mjs` → `test-results/qe/.static-scan-result.json`（含 `duplication.gatePassed` / `security.gatePassed` 子字段）
-2. **质量报告**：在「## 静态代码质量执行记录（R16）」记录各自命令、退出码、`gatePassed` 与结果摘要
-3. **失败处理**：重复代码问题在「代码规范」行标记（**中**或以上），安全问题在「安全」行标记；整改后重跑直至两项均 `gatePassed=true`
-4. **豁免**：两项**分别独立**豁免，每项须 `gated-artifacts.json` 声明对应 `dupCheckApplicability`/`securityScanApplicability: "n/a"` + 用户确认，不可互代
+1. **执行命令**：`node .trae/scripts/static-scan-run.mjs`（内部依次运行重复代码检测 `jscpd-rs` 与安全扫描 `gitleaks-secret-scanner`，二者经 `npx` 获取，跨技术栈通用，无需按栈适配）
+2. **机读产物**：`test-results/qe/.static-scan-result.json`（顶层 `gatePassed=true` 方可推进测试；内含 `duplication.gatePassed` / `security.gatePassed` 两个子字段）
+3. **命令解析**：`harness.config.json` → `qe.commands.dupCheck` / `qe.commands.securityScan` 覆盖 > 框架通用默认值（**多数项目不必手配 config**）
+4. **质量报告**：须在「## 静态代码质量执行记录（R16）」记录重复代码与安全扫描各自的实际命令、退出码、`gatePassed` 与结果摘要
+5. **未通过**：须在质量报告「代码规范」（重复代码）或「安全」（安全扫描）行标记问题，严重等级**中**或以上；整改后须重跑 `static-scan-run.mjs` 直至两项子检查均 `gatePassed=true`
+6. **适用性豁免**（确无法运行）：遵循 `.trae/harness/spec/mechanical-gates.md` §8.2「双要素豁免机制」表 R16 两行，重复代码与安全扫描**分别独立**豁免、互不代替，只声明一项不生效
 
 ## 说明
 

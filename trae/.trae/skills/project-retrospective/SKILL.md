@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 > **手动调用**：本 skill 仅在开发者显式发起复盘时使用，不随日常开发自动加载。
 >
-> **规约权威源**：`AGENTS.md`（流程与门禁）、`README.md`（自测与配置）、`.trae/hooks/**`、`.trae/agents/**`、`.trae/templates/**`。
+> **规约权威源**：`AGENTS.md`（常驻 charter §1–§8）、`.trae/harness/spec/`（说明权威细则）、`README.md`（自测与配置）、`.trae/hooks/**`、`.trae/agents/**`、`.trae/templates/**`。
 >
 > **元规则 R12**：规约改动**只可加强、不可放松**；放宽约束须拒绝并说明替代方案（如拆分迭代、补机械门禁而非删文档）。
 
@@ -42,11 +42,11 @@ disable-model-invocation: true
 
 ### 1.2 合规判定维度（摘要）
 
-- **工作流模式**：`workflow_mode` / `iterationType` 是否与用户目标匹配（§3 分诊表）。
-- **角色与门禁链**：§5 成果物是否齐全、用户确认是否留痕、`blocking`/`cancelled` 是否正确处理。
+- **工作流模式**：`workflow_mode` / `iterationType` 是否与用户目标匹配（`.trae/harness/spec/workflow-modes.md` 分诊表）。
+- **角色与门禁链**：`.trae/harness/spec/gate-chain.md` 成果物是否齐全、用户确认是否留痕、`blocking`/`cancelled` 是否正确处理。
 - **开发编排**：分派计划、待派发列表、进度列表（B1 最新状态）、回退计数是否一致。
-- **测试闭环**：批次/最终集成测试与 E2E（§8.3）；`hotfix` 是否按 R11 折叠；`gatePassed` 是否达标。
-- **顶层代理边界**：是否存在代写源码/设计、越级 Task、Hook 绕过等（§4，结合 git 历史或对话记录若可获）。
+- **测试闭环**：批次/最终集成测试与 E2E（`.trae/harness/spec/mechanical-gates.md` §8.3）；`hotfix` 是否按 R11 折叠；`gatePassed` 是否达标。
+- **顶层代理边界**：是否存在代写源码/设计、越级 Task、Hook 绕过等（`AGENTS.md` §5，结合 git 历史或对话记录若可获）。
 - **机械门禁对齐**：文档声明与 `workflow-gate-lib.mjs` / Hook 行为是否一致（R13、TG-D-4）。
 
 ### 1.3 输出：复盘报告
@@ -96,7 +96,7 @@ disable-model-invocation: true
 | 字段 | 要求 |
 | ---- | ---- |
 | 问题陈述 | 规约哪一节/哪条规则在项目中暴露不足 |
-| 改进方案 | 具体改哪些文件（`AGENTS.md` / agent / hook / 模板 / README） |
+| 改进方案 | 具体改哪些文件（`AGENTS.md` / `.trae/harness/spec/` / agent / hook / 模板 / README） |
 | R12 判定 | `加强` / `澄清（不弱化）` / `需机械门禁补齐`；**禁止**「删除约束」「降低 gatePassed 标准」类方案 |
 | 优先级 | P0（阻塞后续项目）/ P1（显著降摩擦）/ P2（文档/体验） |
 | 验证方式 | 将跑哪些自测（见 Phase 3） |
@@ -122,7 +122,7 @@ disable-model-invocation: true
 
 ### 3.1 实施顺序
 
-1. 先改**机械层**（`workflow-gate-lib.mjs`、各 `gate-*.mjs`、`e2e-run-lib.mjs`）再改**文档层**（`AGENTS.md`、`README.md`、agents、templates），保持 TG-D-4 / R13 表述一致。
+1. 先改**机械层**（`workflow-gate-lib.mjs`、各 `gate-*.mjs`、`e2e-run-lib.mjs`）再改**文档层**（`AGENTS.md`、`.trae/harness/spec/`、`README.md`、agents、templates），保持 TG-D-4 / R13 表述一致。
 2. 同步更新受影响的 agent 文件中的交叉引用。
 3. 在复盘报告中记录「变更清单」：文件路径 + 一行变更说明。
 

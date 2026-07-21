@@ -11,7 +11,7 @@ pending_roles: []
 
 # 流程进度记录
 
-> 本文件由 project-manager 维护；顶层代理只读并据此发起 Task，不得自行改写以跳过门禁（AGENTS.md §4）。
+> 本文件由 project-manager 维护；顶层代理只读并据此发起 Task，不得自行改写以跳过门禁（.trae/harness/spec/gate-chain.md §4）。
 
 ## 用户目标
 
@@ -64,14 +64,14 @@ pending_roles: []
 
 ## 门禁异常事件
 
-> Hook fail-open（§8.4）时由门禁脚本自动追加；项目经理处理后将「处理状态」改为「已处理」并清除 `blocking`。出厂为空表，不构成阻塞。
+> Hook fail-open（.trae/harness/spec/mechanical-gates.md §8.4）时由门禁脚本自动追加；项目经理处理后将「处理状态」改为「已处理」并清除 `blocking`。出厂为空表，不构成阻塞。
 
 | 时间 | Hook | 上下文 | 异常摘要 | 处理状态 |
 | ---- | ---- | ------ | -------- | -------- |
 
 ## 取消记录
 
-> 一旦本节记录了取消，且 frontmatter `cancelled: true`，本文件即被 Hook 永久冻结（见 AGENTS.md R10），任何角色（含 project-manager）均不得再修改本文件，须发起新流程。
+> 一旦本节记录了取消，且 frontmatter `cancelled: true`，本文件即被 Hook 永久冻结（见 .trae/harness/spec/workflow-modes.md R10），任何角色（含 project-manager）均不得再修改本文件，须发起新流程。
 
 | 时间 | 触发原话摘要 | 二次确认摘要 |
 | ---- | ------------ | ------------ |

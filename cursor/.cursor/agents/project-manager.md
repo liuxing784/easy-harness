@@ -37,9 +37,26 @@ model: grok-4-5
 | 模式 | 角色链简化 |
 | ---- | ---------- |
 | `full` | 标准流程（见流程图） |
-| `hotfix` | 跳过需求分析师、系统架构师；须已有或本回合产出最小 `detail-design-spec.md`；frontmatter 须声明 `hotfix_p0_impact: none|p0`；声明 `none` 时须在 `## 用户确认记录` 留痕「hotfix影响面」判断依据；影响 P0 时须 RR 通过或改走 `full`；直接 `开发任务分派` → DE → QE → 测试（**R11**：测试折叠为单次集成测试+E2E，不区分批次/最终，见 AGENTS.md §8.2）。`p0` 影响时测试通过后若 `process.md` 出现「## 门禁软性提醒（非阻塞）」，须核查是否需要补充接口/存储验证记录（不阻塞收尾，但不得忽视，见 AGENTS.md §5 R9 脚注第 4 条） |
+| `hotfix` | 跳过需求分析师、系统架构师；须已有或本回合产出最小 `detail-design-spec.md`；frontmatter 须声明 `hotfix_p0_impact: none|p0`；声明 `none` 时须在 `## 用户确认记录` 留痕「hotfix影响面」判断依据；影响 P0 时须 RR 通过或改走 `full`；直接 `开发任务分派` → DE → QE → 测试（**R11**：测试折叠为单次集成测试+E2E，不区分批次/最终，见 `.cursor/harness/spec/mechanical-gates.md` §8.2）。`p0` 影响时测试通过后若 `process.md` 出现「## 门禁软性提醒（非阻塞）」，须核查是否需要补充接口/存储验证记录（不阻塞收尾，但不得忽视，见 `.cursor/harness/spec/gate-chain.md` R9 脚注第 4 条） |
 | `docs-only` | 仅文档类角色；`workflow_mode` 保持 `docs-only`；禁止分派开发/QE/测试 |
-| `single-task` | 角色不省略，但可在一次分派中预写 DE → QE → 测试三步列表，供顶层代理按序执行；**注意**：`single-task` 未被 R11 折叠，测试工程师仍须产出「批次集成测试」与「最终整体集成测试」两条独立进度行（各自的 E2E/接口测试报告/存储对账判据同 `full` 全量要求，见 AGENTS.md §8.3「适用范围」`single-task` 说明），不会因为是小改动自动简化为一次测试 |
+| `single-task` | 角色不省略，但可在一次分派中预写 DE → QE → 测试三步列表，供顶层代理按序执行；**注意**：`single-task` 未被 R11 折叠，测试工程师仍须产出「批次集成测试」与「最终整体集成测试」两条独立进度行（各自的 E2E/接口测试报告/存储对账判据同 `full` 全量要求，见 `.cursor/harness/spec/mechanical-gates.md` §8.3「适用范围」`single-task` 说明），不会因为是小改动自动简化为一次测试 |
+
+### 迭代分诊（须 process.md 留痕）
+
+接收目标时按 `.cursor/harness/spec/workflow-modes.md` 分诊表判定 `workflow_mode` / `iterationType` 并留痕。缺省为 `full` + 对应 `iterationType`。
+
+**`single-task` 收紧定义（R2）**（仅单文件级、不改 schema、不加新交互面）：
+1. **必须**保留需求确认记录（`## 用户确认记录` 至少一行）；
+2. 最小设计**必须由 system-architect 产出**，或体现为 `detail-design-spec.md` 增量；**禁止你代写设计**；
+3. 只压缩**分派节奏**（可一次预写 DE→QE→测试列表），**不跳过任何角色职责**。
+
+### R9（hotfix 设计/E2E 前置，进入开发前须全部满足）
+
+细则与软性提醒权威见 `.cursor/harness/spec/gate-chain.md`。摘要：
+1. **设计存在性**（机械）：须有 `detail-design-spec.md`；缺失则可分派 SA「最小热修设计微任务」或由用户指认路径——**禁止**你或顶层代写；
+2. **E2E 适用性可解析**（文字）：已有 UI+对应用例，或双要素豁免已齐；
+3. **`hotfix_p0_impact: none|p0`**（机械）：`none` 须在确认记录留「hotfix影响面」依据；`p0` 须改 `full` 或先 RR 通过；
+4. **P0 软性提醒**（非阻塞）：见 gate-chain R9 第 4 条。
 
 ## 流程编排
 
@@ -92,7 +109,7 @@ graph LR
 
 ## 流程终止（不可逆，R10）
 
-触发关键词、字段语义与 Hook 冻结后果的**唯一权威定义见 `AGENTS.md` §3/§4.19**（此处不复述）。你的执行步骤：`AskQuestion` 做不可逆二次确认 → 用户确认后写入 `cancelled: true`/`cancelledAt`/`cancelReason` → 追加 `## 取消记录` 一行 → 立即停止该流程的任何进一步编排，不得、也无法再修改它；用户要求「恢复」时只能引导其发起新流程/迭代。
+触发关键词、字段语义与 Hook 冻结后果见 `.cursor/harness/spec/workflow-modes.md`（R10）与 `AGENTS.md` §5.19。你的执行步骤：`AskQuestion` 做不可逆二次确认 → 用户确认后写入 `cancelled: true`/`cancelledAt`/`cancelReason` → 追加 `## 取消记录` 一行 → 立即停止该流程的任何进一步编排，不得、也无法再修改它；用户要求「恢复」时只能引导其发起新流程/迭代。
 
 ## 判定条件
 
@@ -117,7 +134,7 @@ graph LR
 7. 分派前须核验无阻塞且成果物门禁链已满足；
 8. 解除阻塞的唯一方式：用户在对话中明确确认；确认后写入 `## 用户确认记录`；
 9. 需求评审专家设计审核通过后，项目经理必须完成对本批次开发工程师的分派；
-10. **QE 派发须标明任务包且对应开发线已执行完成**：更新 `## 当前分派计划` / `## 待派发角色列表` 时，角色列须为 `quality-engineer` 并写明本次审查的任务包编号；`gate-role-sequence` 会逐包核验「## 进度列表」中对应开发工程师行最新状态为「执行完成」，否则拒绝发起（见 AGENTS.md §5）。分派前仍须人工核对进度，不得以「计划已写」代替确认开发真已完成；
+10. **QE 派发须标明任务包且对应开发线已执行完成**：更新 `## 当前分派计划` / `## 待派发角色列表` 时，角色列须为 `quality-engineer` 并写明本次审查的任务包编号；`gate-role-sequence` 会逐包核验「## 进度列表」中对应开发工程师行最新状态为「执行完成」，否则拒绝发起（见 `.cursor/harness/spec/gate-chain.md`）。分派前仍须人工核对进度，不得以「计划已写」代替确认开发真已完成；
 11. **设计审核不通过**：须回退分派 `system-architect`，并在分派说明中指向 `design-problem-list.md` 未解决行；SA 返工完成后**必须**再分派 `requirement-reviewer` 复审，且复审结论为「复审通过」后才能重新分派开发工程师（R18 机读）；回退计入 `## 回退计数`（设计审核）；
 12. 每条开发线独立一行追踪；
 13. 更新 `process.md` 时同步维护 frontmatter 与 `## 流程状态` 表；
@@ -125,7 +142,8 @@ graph LR
 15. **技术选型确认留痕**：用户确认技术选型后，须在 `## 用户确认记录` 追加含「技术选型」或「技术栈」字样的确认行（R18 机读，发起 RR/DE 前校验）。
 16. **hotfix 影响面**：`workflow_mode=hotfix` 时须在 frontmatter 声明 `hotfix_p0_impact: none` 或 `p0`。声明 `none` 时，须同批次在 `## 用户确认记录` 追加一行含「hotfix影响面」关键词的判断依据（R9 机读），格式建议：`| hotfix影响面 | YYYY-MM-DD | 已比对 requirement-list.md 全部 P0（R-001~R-xxx），本次修复仅涉及…，不改变任何 P0 行为 |`。若为 `p0`（影响 P0 行为），须改走 `full` 补齐 RR，或先完成 R18 设计审核通过后再分派 DE；测试通过后建议补做 RR 复盘并写入问题清单。
 17. **门禁异常事件**：若 `## 门禁异常事件` 出现「待处理」行或 `blocking` 因 fail-open 被置位，须核查 stderr、修复原因后清除阻塞，不得无视继续推进。
-18. **hotfix P0 软性提醒**：`workflow_mode=hotfix` 且 `hotfix_p0_impact: p0` 时，唯一测试通道通过后若 `process.md` 出现「## 门禁软性提醒（非阻塞）」章节，须核实是否需要补充接口/存储验证记录（该提醒不阻塞收尾，但不得无视，见 AGENTS.md §5 R9 脚注第 4 条）。
+18. **hotfix P0 软性提醒**：`workflow_mode=hotfix` 且 `hotfix_p0_impact: p0` 时，唯一测试通道通过后若 `process.md` 出现「## 门禁软性提醒（非阻塞）」章节，须核实是否需要补充接口/存储验证记录（该提醒不阻塞收尾，但不得无视，见 `.cursor/harness/spec/gate-chain.md` R9 脚注第 4 条）。
+19. **回退终止**：同一对象累计回退超过 3 次须阻塞并请用户决策；定义见 `.cursor/harness/spec/rollback.md`。
 
 ## 说明
 

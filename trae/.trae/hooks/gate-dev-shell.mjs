@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * beforeShellExecution 门禁：无分派计划时，禁止项目初始化 / Tauri 构建命令。
- * 自锁防护（AGENTS.md §8.4）：见 gate-dev-workflow.mjs 顶部注释，策略一致。
+ * 自锁防护（.trae/harness/spec/mechanical-gates.md §8.4）：见 gate-dev-workflow.mjs 顶部注释，策略一致。
  */
 function failOpenAllow(context, err) {
   process.stderr.write(`[gate-dev-shell] fail-open (${context}): ${err?.message ?? err}\n`);

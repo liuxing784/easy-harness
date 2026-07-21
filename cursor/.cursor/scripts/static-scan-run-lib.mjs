@@ -3,7 +3,7 @@
  * 命令解析与 gatePassed 判据计算。与 workflow-gate-lib.mjs 独立（不引入运行时状态
  * 依赖），便于单测覆盖。
  *
- * 静态代码质量门禁（R16，AGENTS.md §8.2 唯一权威定义）：QE 阶段须运行重复代码检测
+ * 静态代码质量门禁（R16，`.cursor/harness/spec/mechanical-gates.md` §8.2 说明权威；执行权威：Hook/脚本）：QE 阶段须运行重复代码检测
  * 与安全静态扫描且均退出码为 0，机读结果落盘 test-results/qe/.static-scan-result.json。
  * 两项工具均经 `npx` 获取（jscpd-rs / gitleaks-secret-scanner），跨技术栈通用，
  * 不像 lint-run-lib.mjs 那样需要按技术栈探测——本框架已强制要求 Node.js >= 18，

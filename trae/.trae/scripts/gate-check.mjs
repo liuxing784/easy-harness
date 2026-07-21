@@ -19,7 +19,7 @@
  *   {followup_message: "..."}                            → stop 专用，须继续推进
  * 退出码：0 = 放行 / 可收尾；1 = 拒绝；2 = 须继续推进（followup）
  *
- * 注意：gate 脚本 fail-open（见 AGENTS.md §8.4），lib 不可加载或运行期异常时放行。
+ * 注意：gate 脚本 fail-open（见 .trae/harness/spec/mechanical-gates.md §8.4），lib 不可加载或运行期异常时放行。
  * 这是防自锁设计，非门禁放松。
  */
 import { spawn } from 'node:child_process';

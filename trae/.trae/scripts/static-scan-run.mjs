@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * 静态代码质量门禁运行器（R16：重复代码 DRY + 安全静态扫描）。判据与产物的唯一权威
- * 定义见 AGENTS.md §8.2（R16）。
+ * 定义见 .trae/harness/spec/mechanical-gates.md §8.2（R16）。
  *
  * 用法：
  *   node .trae/scripts/static-scan-run.mjs   # 依次运行重复代码检测与安全静态扫描

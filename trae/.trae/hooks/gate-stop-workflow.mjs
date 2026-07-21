@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * stop 门禁：流程未完成时注入 followup，防止开发后直接收尾。
- * 判据顺序为 AGENTS.md §8.2 的唯一权威定义，修改行为须同步更新该节。
- * 自锁防护（AGENTS.md §8.4）：见 gate-dev-workflow.mjs 顶部注释，策略一致
+ * 判据顺序为 .trae/harness/spec/mechanical-gates.md §8.2 的唯一权威定义，修改行为须同步更新该节。
+ * 自锁防护（.trae/harness/spec/mechanical-gates.md §8.4）：见 gate-dev-workflow.mjs 顶部注释，策略一致
  *（此处「fail-open」等价于放行/不注入 followup，即 `{}`）。
  */
 function failOpenAllow(context, err) {
@@ -59,7 +59,7 @@ async function main() {
       exitAllow();
     }
 
-    // R9 软性提醒（非阻塞，见 AGENTS.md §5 R9 脚注第 4 条 / workflow-gate-lib 的
+    // R9 软性提醒（非阻塞，见 .trae/harness/spec/gate-chain.md §5 R9 脚注第 4 条 / workflow-gate-lib 的
     // checkHotfixP0InterfaceStorageMention）：P0 影响的 hotfix 唯一测试通道完成后，
     // 若测试报告未提及接口/存储关键字，写一次性提醒到 process.md，但绝不影响本次
     // allow/followup 判定--任何异常均 best-effort 吞掉，不得导致 stop 门禁行为改变。
@@ -141,7 +141,7 @@ async function main() {
         }
         if (state.batchTestRowComplete && state.batchE2ePassed && !state.batchStorageReconPresent) {
           exitFollowup(
-            '【流程门禁】（R17）本批次集成测试记录与批次 E2E 均已完成，但存储对账机读判据未满足。请由 test-engineer 在测试报告补全非空「## 存储对账记录」：须含适用分类型行（未豁免 R14 须含接口+非「不适用」介质行；未豁免 E2E 须含 E2E+非「不适用」介质行；至少一条真实对账适用行）；每行「关联任务包/对账方式/预期存储结果/实际存储结果/是否通过」非空；「存储介质」为数据库/文件/缓存/对象存储/其他/不适用（「其他」须备注具体系统；「不适用」仅用于无写入任务包留痕且须备注理由，不计入分类型真实对账）；且进度列表中已完成批次测试的任务包编号须全部出现在对账「关联任务包」列（见 AGENTS.md §8.3）。若本项目确无业务数据持久化，须由 system-architect 在 gated-artifacts.json 声明 storageReconciliationApplicability:"n/a" 且项目经理在 process.md「## 用户确认记录」补一行存储对账豁免确认，方可豁免本判据。',
+            '【流程门禁】（R17）本批次集成测试记录与批次 E2E 均已完成，但存储对账机读判据未满足。请由 test-engineer 在测试报告补全非空「## 存储对账记录」：须含适用分类型行（未豁免 R14 须含接口+非「不适用」介质行；未豁免 E2E 须含 E2E+非「不适用」介质行；至少一条真实对账适用行）；每行「关联任务包/对账方式/预期存储结果/实际存储结果/是否通过」非空；「存储介质」为数据库/文件/缓存/对象存储/其他/不适用（「其他」须备注具体系统；「不适用」仅用于无写入任务包留痕且须备注理由，不计入分类型真实对账）；且进度列表中已完成批次测试的任务包编号须全部出现在对账「关联任务包」列（见 .trae/harness/spec/mechanical-gates.md §8.3）。若本项目确无业务数据持久化，须由 system-architect 在 gated-artifacts.json 声明 storageReconciliationApplicability:"n/a" 且项目经理在 process.md「## 用户确认记录」补一行存储对账豁免确认，方可豁免本判据。',
           );
         }
         if (!state.batchTestComplete) {

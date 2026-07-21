@@ -1,0 +1,12 @@
+---
+description: Harness 测试/QE 产物提醒：编辑测试报告、E2E 或 QE 结果时对照机械门禁
+globs: docs/**/test/**,docs/**/quality/**,e2e/**,test-results/qe/**,test-results/e2e/**
+alwaysApply: false
+---
+
+# 测试与 QE 产物提醒
+
+- R15/R16（lint / 静态扫描）：执行面见 `quality-engineer.md`；说明权威见 `.cursor/harness/spec/mechanical-gates.md` §8.2。
+- R14/R17/E2E 与 `gatePassed`：执行面见 `test-engineer.md`；说明权威见 `.cursor/harness/spec/mechanical-gates.md` §8.3。
+- `gatePassed≠true` 不得推进下一批次或宣告完成；豁免须双要素，仅一项不生效。
+- 执行权威始终是 Hook / `*-run.mjs`，文档不得单独放宽（R12）。

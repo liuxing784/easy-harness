@@ -4,7 +4,7 @@ const isCI = !!process.env.CI;
 const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3000';
 
 /**
- * Playwright E2E 配置（跨技术栈通用 · AGENTS.md §8.3 唯一权威判据）。
+ * Playwright E2E 配置（跨技术栈通用 · `.cursor/harness/spec/mechanical-gates.md` §8.3 说明权威；执行权威：Hook/脚本）。
  * 仅支持 Chrome 内核浏览器（Chromium，涵盖 Chrome / Edge 等 Chromium-based 浏览器）；
  * JSON 报告供 `.cursor/scripts/e2e-run.mjs` 按 projectName × status 解析。
  *

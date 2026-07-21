@@ -50,55 +50,35 @@ tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
 
 同时在 `detail-design-spec.md` §3 目录结构表中标注各路径是否受门禁保护。
 
-#### §5 编程规范 lint 命令（R15，自动写入 config + 必填留痕）
+#### §5 编程规范 lint 命令（R15，必填留痕）
 
-阶段 2 产出成果物时，须**同时**完成以下两步：
+阶段 2 产出 `detail-design-spec.md` 时，须在 §5「本项目」表格中**按用户已确认技术栈填入一行 lint 命令**：
 
-**步骤 A：写入 `harness.config.json` → `qe.commands.lint`**
+1. **优先**从模板 §5 默认命令表（与 `lint-run.mjs` / `lint-run-lib.mjs` → `STACK_LINT_COMMANDS` 同口径）复制对应默认值（如 Node → `npm run lint`、Python → `ruff check .`）；
+2. **不必**为此修改 `harness.config.json`——`lint-run.mjs` 会按构建清单自动探测并选用同一默认；
+3. 仅当 monorepo、自定义 npm script 名、或多 manifest 导致自动探测不准时，在 `harness.config.json` → `qe.commands.lint` 写覆盖值，并在 §5 表格同步改写；
+4. 所选栈**无框架默认 lint**（Java/PHP/.NET 等）且无法声明等价命令时，走下方 `lintApplicability: "n/a"` 双要素豁免，并在 §5 说明豁免理由。
 
-按用户已确认技术栈，从下表复制对应默认 lint 命令写入 `harness.config.json`：
+若某项机械门禁确不适用/无法运行（E2E 无 UI、R14 无对外接口、R17 无业务数据持久化、R15 无可用 linter、R16 重复代码检测或安全扫描无法运行），须走 `.trae/harness/spec/mechanical-gates.md` §8.2「双要素豁免机制」（说明权威见 `.trae/harness/spec/mechanical-gates.md` §8.2（执行权威：Hook/脚本））：**你**负责第一要素——在 `gated-artifacts.json` 中声明对应字段；第二要素（`process.md` 用户确认）由你提示项目经理补齐，两项皆满足门禁才生效，**只声明一项不生效**。按需在 `gated-artifacts.json` 中添加：
 
 ```json
 {
-  "qe": {
-    "commands": {
-      "lint": "npm run lint"
-    }
-  }
+  "e2eApplicability": "n/a",
+  "e2eApplicabilityReason": "简要说明为何不适用浏览器 E2E",
+  "apiTestApplicability": "n/a",
+  "apiTestApplicabilityReason": "简要说明为何无对外接口 / 不适用接口测试",
+  "storageReconciliationApplicability": "n/a",
+  "storageReconciliationApplicabilityReason": "简要说明为何无业务数据持久化（无数据库/文件/缓存/对象存储等写入）",
+  "lintApplicability": "n/a",
+  "lintApplicabilityReason": "简要说明为何无可用 linter / 不适用 lint 门禁",
+  "dupCheckApplicability": "n/a",
+  "dupCheckApplicabilityReason": "简要说明为何无法运行重复代码检测",
+  "securityScanApplicability": "n/a",
+  "securityScanApplicabilityReason": "简要说明为何无法运行安全静态扫描"
 }
 ```
 
-各栈默认 lint 命令映射（与 `lint-run-lib.mjs` → `STACK_LINT_COMMANDS` 同口径）：
-
-| 技术栈 | 默认 lint 命令 |
-| ------ | -------------- |
-| Node.js（`package.json`） | `npm run lint` |
-| Python（`pyproject.toml` / `requirements.txt`） | `ruff check .` |
-| Go（`go.mod`） | `go vet ./...` |
-| Rust（`Cargo.toml`） | `cargo clippy` |
-| Ruby（`Gemfile`） | `rubocop` |
-| Java Maven / Java Gradle / PHP / .NET | **无框架默认** → 见下方豁免路径 |
-
-- **有默认命令的栈**：直接写入对应命令。如为 monorepo 或多 manifest 项目，`lint-run.mjs` 的自动探测可能不准确，须以 `qe.commands.lint` 显式覆盖为准。
-- **无框架默认 lint 的栈**（Java/PHP/.NET 等）：优先在 `qe.commands.lint` 写入项目实际可用的等价 lint 命令（如 `mvn checkstyle:check`、`phpcs --standard=PSR12 .`、`dotnet format --verify-no-changes`）；**仅当项目确实无可用 lint 工具时**，走下方 `lintApplicability: "n/a"` 双要素豁免（此时 `qe.commands.lint` 留空）。
-
-**步骤 B：在 `detail-design-spec.md` §5「本项目」表格中留痕**
-
-将步骤 A 写入的命令同步填入 `detail-design-spec.md` §5「本项目」表格（或注明豁免理由），供 QE/PM 查阅。
-
-### 门禁适用性豁免（声明模板）
-
-以下五项豁免（接口测试 / 存储对账 / lint / 重复代码 / 安全扫描）遵循同一模式：架构师在 `gated-artifacts.json` 声明对应字段为 `"n/a"`（含原因），并提示项目经理在 `process.md`「## 用户确认记录」补一行豁免确认（行内须含对应关键词）。**两项皆满足方生效，只声明一项不生效**。各豁免的关键字段、关键词与 Hook 函数如下：
-
-| 豁免项 | `gated-artifacts.json` 字段 | 用户确认行关键词 | Hook 函数 |
-| ------ | --------------------------- | ---------------- | --------- |
-| 接口测试（R14） | `apiTestApplicability` / `apiTestApplicabilityReason` | 「接口测试」+「豁免/不适用/无接口」 | `isApiTestExempt()` |
-| 存储对账（R17） | `storageReconciliationApplicability` / `storageReconciliationApplicabilityReason` | 「存储对账/对账」+「豁免/不适用/无持久化」 | `isStorageReconciliationExempt()` |
-| 编程规范 lint（R15） | `lintApplicability` / `lintApplicabilityReason` | 「编程规范/代码规范/lint」+「豁免/不适用/无」 | `isLintExempt()` |
-| 重复代码检测（R16） | `dupCheckApplicability` / `dupCheckApplicabilityReason` | 「重复代码/DRY/jscpd」+「豁免/不适用/无」 | `isDupCheckExempt()` |
-| 安全静态扫描（R16） | `securityScanApplicability` / `securityScanApplicabilityReason` | 「安全扫描/安全静态扫描/密钥扫描」+「豁免/不适用/无」 | `isSecurityScanExempt()` |
-
-重复代码与安全扫描须**分别独立**声明，互不代替。E2E 适用性豁免（`e2eApplicability`）同此模式，关键词见 `test-engineer.md`。声明后须提示项目经理补确认行。`detail-design-spec.md` §4 须声明业务数据存储介质（R17 输入）。
+> 仅声明**实际不适用**的字段，其余不适用豁免的字段不得写入（否则视为无理由弱化门禁，R12）。字段对应的确认关键词、判定函数见 `.trae/harness/spec/mechanical-gates.md` §8.2「双要素豁免机制」表；重复代码与安全扫描须**分别独立**声明，互不代替。`detail-design-spec.md` §4 须声明业务数据存储介质（R17 输入）。
 
 ### `hotfix` 最小热修设计微任务（R9）
 
@@ -139,6 +119,16 @@ tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
 | 阻塞：待用户确认技术选型 | `tech-stack-options.md` | 停止推进；待用户确认后写入 `## 用户确认记录` |
 | 设计成果物有效 | `detail-design-spec.md`、`develop-task-list.md`、`gated-artifacts.json` | 可分派需求评审专家 |
 
+### 设计审核返工（消费 `design-problem-list.md`）
+
+当项目经理因设计审核不通过而重新分派你时：
+
+1. **通读**当前 `design-problem-list.md` 中「是否存在」=`是` 且「是否解决」≠`是` 的全部行；
+2. **仅按**各行的「关联成果物 / 关联需求编号 / 修复建议」修改对应设计成果物（通常为 `detail-design-spec.md`、`develop-task-list.md`、`gated-artifacts.json`），不得借机扩大无关范围；
+3. 修复完成后，在问题清单对应行将「是否解决」更新为 `是`，并确保 `## 需求覆盖矩阵` 中相关 P0 的「覆盖结论」为 `已覆盖`（验收标准/设计落点/设计落点原文摘录/任务包非空）；
+4. **禁止**删除未解决行或把「是否存在」改为 `否` 来伪装通过；确属误报时须在「修复建议」旁注明误报理由并将「是否解决」标 `是`；
+5. **禁止**改写 `## 审核结论`；回报项目经理后停止；项目经理**必须**再分派需求评审专家复审（结论须为「复审通过」）后才能进入开发。
+
 ## 强制约束
 
 1. 用户未指定技术栈时：只执行阶段 1 后**立即停止**；
@@ -147,4 +137,5 @@ tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
 4. **禁止**产出缺少 §3、§5 lint 命令留痕（或豁免说明）或 `gated-artifacts.json` 的阶段 2 成果物；
 5. **系统架构与模块划分须遵循** `detail-design-spec.md` §2 架构设计原则（单一职责、高内聚低耦合、DRY、KISS、依赖方向）；
 6. §3 只描述任务包级分派，**禁止**写入开发工程师内部实现步骤；
-7. 依赖链决定不可并行时，须如实标为 `全串行` 或 `仅串行`。
+7. 依赖链决定不可并行时，须如实标为 `全串行` 或 `仅串行`；
+8. 设计审核返工时必须消费并更新 `design-problem-list.md`（见上方「设计审核返工」），不得无视问题清单另起炉灶。

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 编程规范（lint）门禁运行器。判据与产物的唯一权威定义见 AGENTS.md §8.2（R15）。
+ * 编程规范（lint）门禁运行器。判据与产物的说明权威见 `.cursor/harness/spec/mechanical-gates.md` §8.2（执行权威：Hook/脚本）（R15）。
  *
  * 用法：
  *   node .cursor/scripts/lint-run.mjs            # 自动探测技术栈并运行 lint
